@@ -32,6 +32,10 @@ Db::~Db()
   for (auto &iter : opened_tables_) {
     delete iter.second;
   }
+
+  if (clog_manager_ != nullptr) {
+    delete clog_manager_;
+  }
   LOG_INFO("Db has been closed: %s", name_.c_str());
 }
 
@@ -82,6 +86,26 @@ RC Db::create_table(const char *table_name, int attribute_count, const AttrInfo 
   opened_tables_[table_name] = table;
   LOG_INFO("Create table success. table name=%s", table_name);
   return RC::SUCCESS;
+}
+
+RC Db::drop_table(const char *table_name)
+{
+  RC rc = RC::SUCCESS;
+  auto iter = opened_tables_.find(std::string(table_name));
+  if (iter == opened_tables_.end()) {
+    LOG_WARN("%s has been droped.", table_name);
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+  Table *table = iter->second;
+  rc = table->drop();
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to drop table %s.", table_name);
+    return rc;
+  }
+  
+  opened_tables_.erase(std::string(table_name));
+  delete table;
+  return rc;
 }
 
 Table *Db::find_table(const char *table_name) const

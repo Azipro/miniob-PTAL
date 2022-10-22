@@ -120,6 +120,41 @@ RC Table::create(
   return rc;
 }
 
+RC Table::drop()
+{
+  RC rc = RC::SUCCESS;
+  // drop table: 元数据文件已经持久化到磁盘, data文件删除前需要先关闭.
+  std::string data_file = table_data_file(base_dir_.c_str(), table_meta_.name());
+  std::string table_file_path = table_meta_file(base_dir_.c_str(), table_meta_.name());
+  std::string index_file = "";
+  rc = data_buffer_pool_->close_file();
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to close data_file file. file name=%s", data_file);
+  }
+  data_buffer_pool_ = nullptr; // 防止析构再次close
+
+  if (std::remove(data_file.c_str()) != 0){
+    LOG_ERROR("Failed to delete data_file file. file name=%s", data_file);
+    return RC::IOERR_DELETE;
+  }
+  if (std::remove(table_file_path.c_str()) != 0){
+    LOG_ERROR("Failed to delete table_file file. file name=%s", table_file_path);
+    return RC::IOERR_DELETE;
+  }
+
+  for (std::vector<Index *>::iterator it = indexes_.begin(); it != indexes_.end(); ++it) {
+    BplusTreeIndex *index = (BplusTreeIndex *)(*it);
+    index->close();
+
+    // delete anyway
+    index_file = table_index_file(base_dir_.c_str(), name(), index->index_meta().name());
+    std::remove(index_file.c_str());
+    delete index;
+  }
+  indexes_.clear();
+  return rc;
+}
+
 RC Table::open(const char *meta_file, const char *base_dir, CLogManager *clog_manager)
 {
   // 加载元数据文件
