@@ -18,6 +18,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/filter_stmt.h"
 #include "storage/common/db.h"
 #include "storage/common/table.h"
+#include "util/date.h"
+#include "sql/parser/parse_defs.h"
 
 FilterStmt::~FilterStmt()
 {
@@ -104,6 +106,17 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     left = new FieldExpr(table, field);
     left_type = field->type();
   } else {
+    // transform left_value to date type
+    if (condition.left_value.type == CHARS) {
+      int32_t date = -1;
+      RC rc = string_to_date((char*)condition.left_value.data, date);
+      if (rc != RC::SUCCESS) {
+        LOG_TRACE("string_to_date fail, data=%s", condition.left_value.data);
+        return rc;
+      }
+      value_destroy((Value*)&condition.left_value);
+      value_init_date((Value*)&condition.left_value, date);
+    }
     left = new ValueExpr(condition.left_value);
     left_type = condition.left_value.type;
   }
@@ -120,6 +133,17 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     right = new FieldExpr(table, field);
     right_type = field->type();
   } else {
+    // transform right_value to date type
+    if (condition.right_value.type == CHARS) {
+      int32_t date = -1;
+      RC rc = string_to_date((char*)condition.right_value.data, date);
+      if (rc != RC::SUCCESS) {
+        LOG_TRACE("string_to_date fail, data=%s", condition.right_value.data);
+        return rc;
+      }
+      value_destroy((Value*)&condition.right_value);
+      value_init_date((Value*)&condition.right_value, date);
+    }
     right = new ValueExpr(condition.right_value);
     right_type = condition.right_value.type;
   }
