@@ -129,16 +129,16 @@ RC Table::drop()
   std::string index_file = "";
   rc = data_buffer_pool_->close_file();
   if (rc != RC::SUCCESS) {
-    LOG_ERROR("Failed to close data_file file. file name=%s", data_file);
+    LOG_ERROR("Failed to close data_file file. file name=%s", data_file.c_str());
   }
   data_buffer_pool_ = nullptr; // 防止析构再次close
 
   if (std::remove(data_file.c_str()) != 0){
-    LOG_ERROR("Failed to delete data_file file. file name=%s", data_file);
+    LOG_ERROR("Failed to delete data_file file. file name=%s", data_file.c_str());
     return RC::IOERR_DELETE;
   }
   if (std::remove(table_file_path.c_str()) != 0){
-    LOG_ERROR("Failed to delete table_file file. file name=%s", table_file_path);
+    LOG_ERROR("Failed to delete table_file file. file name=%s", table_file_path.c_str());
     return RC::IOERR_DELETE;
   }
 
