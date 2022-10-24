@@ -106,17 +106,6 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     left = new FieldExpr(table, field);
     left_type = field->type();
   } else {
-    // transform left_value to date type
-    if (condition.left_value.type == CHARS) {
-      int32_t date = -1;
-      RC rc = string_to_date((char*)condition.left_value.data, date);
-      if (rc != RC::SUCCESS) {
-        LOG_TRACE("string_to_date fail, data=%s", condition.left_value.data);
-        return rc;
-      }
-      value_destroy((Value*)&condition.left_value);
-      value_init_date((Value*)&condition.left_value, date);
-    }
     left = new ValueExpr(condition.left_value);
     left_type = condition.left_value.type;
   }
@@ -133,7 +122,12 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     right = new FieldExpr(table, field);
     right_type = field->type();
   } else {
-    // transform right_value to date type
+    right = new ValueExpr(condition.right_value);
+    right_type = condition.right_value.type;
+  }
+
+  // check and transform date type
+  if (condition.left_is_attr and left_type == DATES and !condition.right_is_attr and right_type != DATES) {
     if (condition.right_value.type == CHARS) {
       int32_t date = -1;
       RC rc = string_to_date((char*)condition.right_value.data, date);
@@ -146,6 +140,20 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     }
     right = new ValueExpr(condition.right_value);
     right_type = condition.right_value.type;
+  }
+  else if (!condition.left_is_attr and left_type != DATES and condition.right_is_attr and right_type == DATES) {
+    if (condition.left_value.type == CHARS) {
+      int32_t date = -1;
+      RC rc = string_to_date((char*)condition.left_value.data, date);
+      if (rc != RC::SUCCESS) {
+        LOG_TRACE("string_to_date fail, data=%s", condition.left_value.data);
+        return rc;
+      }
+      value_destroy((Value*)&condition.left_value);
+      value_init_date((Value*)&condition.left_value, date);
+    }
+    left = new ValueExpr(condition.left_value);
+    left_type = condition.left_value.type;
   }
 
   if (left_type == right_type || (left_type == AttrType::INTS && right_type == AttrType::FLOATS) || (left_type == AttrType::FLOATS && right_type == AttrType::INTS)) {
