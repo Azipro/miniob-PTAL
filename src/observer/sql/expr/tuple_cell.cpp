@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "util/comparator.h"
 #include "util/util.h"
 #include "util/date.h"
+#include "util/typecast.h"
 
 void TupleCell::to_string(std::ostream &os) const
 {
@@ -64,6 +65,18 @@ int TupleCell::compare(const TupleCell &other) const
   } else if (this->attr_type_ == FLOATS && other.attr_type_ == INTS) {
     float other_data = *(int *)other.data_;
     return compare_float(data_, &other_data);
+  } else if (this->attr_type_ == INTS && other.attr_type_ == CHARS) {
+    int32_t other_data = string_to_integer(other.data_);
+    return compare_int(data_, &other_data);
+  } else if (this->attr_type_ == CHARS && other.attr_type_ == INTS) {
+    int32_t this_data = string_to_integer(data_);
+    return compare_int(&this_data, other.data_);
+  } else if (this->attr_type_ == FLOATS && other.attr_type_ == CHARS) {
+    float other_data = string_to_float(other.data_);
+    return compare_float(data_, &other_data);
+  } else if (this->attr_type_ == CHARS && other.attr_type_ == FLOATS) {
+    float this_data = string_to_float(data_);
+    return compare_float(&this_data, other.data_);
   }
   LOG_WARN("not supported");
   return -1; // TODO return rc?
