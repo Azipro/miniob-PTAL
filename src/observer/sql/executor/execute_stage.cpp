@@ -34,7 +34,6 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/project_operator.h"
 #include "sql/stmt/stmt.h"
 #include "sql/stmt/select_stmt.h"
-#include "sql/stmt/update_stmt.h"
 #include "sql/stmt/delete_stmt.h"
 #include "sql/stmt/insert_stmt.h"
 #include "sql/stmt/filter_stmt.h"
@@ -143,7 +142,8 @@ void ExecuteStage::handle_request(common::StageEvent *event)
       do_insert(sql_event);
     } break;
     case StmtType::UPDATE: {
-      //do_update((UpdateStmt *)stmt, session_event);
+      // 这是骗人的
+      //do_update(sql_event);
     } break;
     case StmtType::DELETE: {
       do_delete(sql_event);
@@ -171,6 +171,10 @@ void ExecuteStage::handle_request(common::StageEvent *event)
     } break;
     case SCF_DROP_TABLE: {
       do_drop_table(sql_event);
+      break;
+    }
+    case SCF_UPDATE:{
+      do_update(sql_event);
       break;
     }
     case SCF_DROP_INDEX:
@@ -582,6 +586,31 @@ RC ExecuteStage::do_insert(SQLStageEvent *sql_event)
     } else {
       session_event->set_response("SUCCESS\n");
     }
+  } else {
+    session_event->set_response("FAILURE\n");
+  }
+  return rc;
+}
+
+/*
+create table t (id int, name char, col1 int, col2 int);
+insert into t values(1, '111', 1, 1);
+insert into t values(2, '222', 2, 2);
+update t set col1 = 10;
+select * from t;
+*/
+
+RC ExecuteStage::do_update(SQLStageEvent *sql_event)
+{
+  SessionEvent *session_event = sql_event->session_event();
+  const Updates &update = sql_event ->query()->sstr.update;
+  Db *db = session_event->session()->get_current_db();
+  Session *session = session_event->session();
+  Trx *trx = session->current_trx();
+  // 不支持事务
+  RC rc = db->update(update.relation_name, trx, update.attribute_name, &update.value, update.condition_num, update.conditions, -1);
+  if (rc == RC::SUCCESS) {
+    session_event->set_response("SUCCESS\n");
   } else {
     session_event->set_response("FAILURE\n");
   }

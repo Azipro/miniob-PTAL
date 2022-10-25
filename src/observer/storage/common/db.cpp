@@ -108,6 +108,21 @@ RC Db::drop_table(const char *table_name)
   return rc;
 }
 
+RC Db::update(const char *table_name, Trx *trx, const char *attribute_name, 
+    const Value *value, int condition_num, const Condition conditions[], int update_count)
+{
+  RC rc = RC::SUCCESS;
+  auto iter = opened_tables_.find(table_name);
+  if (iter == opened_tables_.end()) {
+    LOG_WARN("%s does not exist.", table_name);
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+  Table *table = iter->second;
+  rc = table->update_record(trx, attribute_name, value, condition_num, conditions, &update_count);
+  return rc;
+}
+
+
 Table *Db::find_table(const char *table_name) const
 {
   std::unordered_map<std::string, Table *>::const_iterator iter = opened_tables_.find(table_name);
