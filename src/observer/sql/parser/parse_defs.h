@@ -37,6 +37,8 @@ typedef enum {
   LESS_THAN,    //"<"     3
   GREAT_EQUAL,  //">="    4
   GREAT_THAN,   //">"     5
+  OP_LIKE,     //"LIKE"  6
+  OP_NOT_LIKE, //"NOT LIKE"  7
   NO_OP
 } CompOp;
 

@@ -91,6 +91,31 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     return RC::INVALID_ARGUMENT;
   }
 
+  if (comp == OP_LIKE || comp == OP_NOT_LIKE) {
+    if (condition.right_is_attr) {
+      LOG_TRACE("right must be value");
+      return RC::INVALID_ARGUMENT;
+    }
+    if (condition.left_is_attr) {
+      Table *table = nullptr;
+      const FieldMeta *field = nullptr;
+      rc = get_table_and_field(db, default_table, tables, condition.left_attr, table, field);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("cannot find left_attr ");
+        return rc;
+      }
+      if (!(field->type() == AttrType::CHARS && condition.right_value.type == AttrType::CHARS)) {
+        LOG_INFO("left and right must be char");
+        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+      }
+    } else {
+      if (!(condition.left_value.type == AttrType::CHARS && condition.right_value.type == AttrType::CHARS)) {
+        LOG_INFO("left and right must be char");
+        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+      }
+    }
+  }
+
   Expression *left = nullptr;
   Expression *right = nullptr;
   AttrType left_type = AttrType::UNDEFINED;
