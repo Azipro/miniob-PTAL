@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/common/db.h"
 #include "storage/common/table.h"
 #include "util/date.h"
+#include "util/typecast.h"
 #include "sql/parser/parse_defs.h"
 
 InsertStmt::InsertStmt(Table *table, const Value *values, int value_amount)
@@ -66,6 +67,48 @@ RC InsertStmt::create(Db *db, const Inserts &inserts, Stmt *&stmt)
         value_destroy((Value*)&values[i]);
         value_init_date((Value*)&values[i], date);
         continue;
+      } else if (field_type == INTS) {
+        if (value_type == FLOATS) {
+          int32_t val = -1;
+          val = float_to_integer(*(float*)values[i].data);
+          value_destroy((Value*)&values[i]);
+          value_init_integer((Value*)&values[i], val);
+          continue;
+        } else if (value_type == CHARS) {
+          int32_t val = -1;
+          val = string_to_integer((char*)values[i].data);
+          value_destroy((Value*)&values[i]);
+          value_init_integer((Value*)&values[i], val);
+          continue;
+        }
+      } else if (field_type == FLOATS) {
+        if (value_type == INTS) {
+          float val = -1;
+          val = integer_to_float(*(int32_t*)values[i].data);
+          value_destroy((Value*)&values[i]);
+          value_init_float((Value*)&values[i], val);
+          continue;
+        } else if (value_type == CHARS) {
+          float val = -1;
+          val = string_to_float((char*)values[i].data);
+          value_destroy((Value*)&values[i]);
+          value_init_float((Value*)&values[i], val);
+          continue;
+        }
+      } else if (field_type == CHARS) {
+        if (value_type == INTS) {
+          char * val = nullptr;
+          val = integer_to_string(*(int32_t*)values[i].data);
+          value_destroy((Value*)&values[i]);
+          value_init_string((Value*)&values[i], val);
+          continue;
+        } else if (value_type == FLOATS) {
+          char * val = nullptr;
+          val = float_to_string(*(float*)values[i].data);
+          value_destroy((Value*)&values[i]);
+          value_init_string((Value*)&values[i], val);
+          continue;
+        }
       }
 
       LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",

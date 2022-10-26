@@ -140,8 +140,7 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     }
     right = new ValueExpr(condition.right_value);
     right_type = condition.right_value.type;
-  }
-  else if (!condition.left_is_attr and left_type != DATES and condition.right_is_attr and right_type == DATES) {
+  } else if (!condition.left_is_attr and left_type != DATES and condition.right_is_attr and right_type == DATES) {
     if (condition.left_value.type == CHARS) {
       int32_t date = -1;
       RC rc = string_to_date((char*)condition.left_value.data, date);
@@ -156,7 +155,9 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     left_type = condition.left_value.type;
   }
 
-  if (left_type == right_type || (left_type == AttrType::INTS && right_type == AttrType::FLOATS) || (left_type == AttrType::FLOATS && right_type == AttrType::INTS)) {
+  if (left_type == right_type ||
+      ((left_type == AttrType::INTS || left_type == AttrType::FLOATS || left_type == AttrType::CHARS) &&
+          (right_type == AttrType::INTS || right_type == AttrType::FLOATS || right_type == AttrType::CHARS))) {
     filter_unit = new FilterUnit;
     filter_unit->set_comp(comp);
     filter_unit->set_left(left);
