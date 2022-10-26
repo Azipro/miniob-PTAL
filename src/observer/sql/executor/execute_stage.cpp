@@ -598,6 +598,14 @@ insert into t values(1, '111', 1, 1);
 insert into t values(2, '222', 2, 2);
 update t set col1 = 10;
 select * from t;
+
+create table Update_table_1 (ID int, T_NAME char, COL1 int, COL2 int);
+insert into Update_table_1 values(1, 'N1', 0, 0);
+insert into Update_table_1 values(2, 'N2', 0, 0);
+insert into Update_table_1 values(4, 'N3', 0, 1);
+select * from Update_table_1;
+UPDATE Update_table_1 SET t_name='N02' WHERE col1=0 AND col2=0;
+UPDATE Update_table_1 SET T_NAME='N02' WHERE COL1=0 AND COL2=0;
 */
 
 RC ExecuteStage::do_update(SQLStageEvent *sql_event)

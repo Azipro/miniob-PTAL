@@ -731,21 +731,20 @@ RC Table::update_record(Trx *trx, Record *record, const Value *value, const char
     return rc;
   }
 
-  if (trx != nullptr) {
-    rc = trx->update_record(this, record);
+  // if (trx != nullptr) {
+  //   rc = trx->update_record(this, record);
     
-    CLogRecord *clog_record = nullptr;
-    rc = clog_manager_->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record, name(), 0, record);
-    if (rc != RC::SUCCESS) {
-      LOG_ERROR("Failed to create a clog record. rc=%d:%s", rc, strrc(rc));
-      return rc;
-    }
-    rc = clog_manager_->clog_append_record(clog_record);
-    if (rc != RC::SUCCESS) {
-      return rc;
-    }
-  }
-
+  //   CLogRecord *clog_record = nullptr;
+  //   rc = clog_manager_->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record, name(), 0, record);
+  //   if (rc != RC::SUCCESS) {
+  //     LOG_ERROR("Failed to create a clog record. rc=%d:%s", rc, strrc(rc));
+  //     return rc;
+  //   }
+  //   rc = clog_manager_->clog_append_record(clog_record);
+  //   if (rc != RC::SUCCESS) {
+  //     return rc;
+  //   }
+  // }
   return rc;
 }
 
@@ -758,7 +757,6 @@ RC Table::update_record(Trx *trx, const char *attribute_name, const Value *value
   filter.init(*this, conditions, condition_num);
   // step2: scan
   RecordUpdater updater(*this, trx, value, attribute_name);
-  LOG_INFO("before scan");
   rc = scan_record(nullptr, &filter, INT_MAX, &updater, record_reader_update_adapter);
   return rc;
 }
