@@ -12,6 +12,7 @@ See the Mulan PSL v2 for more details. */
 // Created by wangyunlai on 2022/9/28
 //
 
+#include "common/log/log.h"
 #include <string.h>
 #include "util/util.h"
 
@@ -29,4 +30,22 @@ std::string double2string(double v)
   }
 
   return std::string(buf, len);
+}
+
+bool is_match(std::string s, std::string p)
+{
+  if(p.empty())
+    return s.empty();
+  if(p[0] == '%')
+    return (!s.empty() && is_match(s.substr(1), p)) || is_match(s, p.substr(1));
+  else
+    return !s.empty() && (s[0] == p[0] || p[0] == '_') && is_match(s.substr(1), p.substr(1));
+}
+
+bool like(const char * s, const char * p, int len)
+{
+  char str[255];
+  strncpy(str, s, len);
+  str[len] = '\0';
+  return is_match(std::string(str), std::string(p));
 }
