@@ -673,10 +673,95 @@ RC Table::create_index(Trx *trx, const char *index_name, const char *attribute_n
   return rc;
 }
 
+class RecordUpdater {
+public:
+  RecordUpdater(Table &table, Trx *trx, const Value* value, const char *attribute_name) : table_(table), trx_(trx), value_(value), attribute_name_(attribute_name)
+  {}
+
+  RC update_record(Record *record)
+  {
+    RC rc = RC::SUCCESS;
+    rc = table_.update_record(trx_, record, value_, attribute_name_);
+    return rc;
+  }
+private:
+  Table &table_;
+  Trx *trx_;
+  const Value *value_;
+  const char *attribute_name_;
+};
+
+static RC record_reader_update_adapter(Record *record, void *context)
+{
+  RecordUpdater &record_updater = *(RecordUpdater *)context;
+  return record_updater.update_record(record);
+}
+
+RC Table::update_record(Trx *trx, Record *record, const Value *value, const char *attribute_name)
+{
+  RC rc = RC::SUCCESS;
+  // TODO: 是否需要更新索引？
+  // rc = update_entry_of_indexes(record->data(), record->rid(), false); 
+  // if (rc != RC::SUCCESS) {
+  //   LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
+  //               record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+  //   return rc;
+  // } 
+  const FieldMeta *field = table_meta_.field(attribute_name);
+  // 属性不存在
+  if(field == nullptr){
+    return RC::INVALID_ARGUMENT;
+  }
+  // 类型不匹配
+  if(field->type() != value->type){
+    return RC::INVALID_ARGUMENT;
+  }
+  size_t copy_len = field->len();
+  if (field->type() == CHARS) {
+    const size_t data_len = strlen((const char *)value->data);
+    if (copy_len > data_len) {
+      copy_len = data_len + 1;
+    }
+  }
+  memcpy(record->data() + field->offset(), value->data, copy_len);
+  rc = record_handler_->update_record(record);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to update record (rid=%d.%d). rc=%d:%s",
+                record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+    return rc;
+  }
+
+  // if (trx != nullptr) {
+  //   rc = trx->update_record(this, record);
+    
+  //   CLogRecord *clog_record = nullptr;
+  //   rc = clog_manager_->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record, name(), 0, record);
+  //   if (rc != RC::SUCCESS) {
+  //     LOG_ERROR("Failed to create a clog record. rc=%d:%s", rc, strrc(rc));
+  //     return rc;
+  //   }
+  //   rc = clog_manager_->clog_append_record(clog_record);
+  //   if (rc != RC::SUCCESS) {
+  //     return rc;
+  //   }
+  // }
+  return rc;
+}
+
 RC Table::update_record(Trx *trx, const char *attribute_name, const Value *value, int condition_num,
     const Condition conditions[], int *updated_count)
 {
-  return RC::GENERIC_ERROR;
+  RC rc = RC::SUCCESS;
+  // step1: filter
+  CompositeConditionFilter filter;
+  rc = filter.init(*this, conditions, condition_num);
+  if(rc != RC::SUCCESS){ // 条件错误，也返回success，但是不继续查询
+    return RC::INVALID_ARGUMENT;
+  }
+  // step2: scan
+  RecordUpdater updater(*this, trx, value, attribute_name);
+  rc = scan_record(nullptr, &filter, INT_MAX, &updater, record_reader_update_adapter);
+  return rc;
 }
 
 class RecordDeleter {

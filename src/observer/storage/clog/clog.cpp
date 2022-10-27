@@ -64,6 +64,10 @@ CLogRecord::CLogRecord(CLogType flag, int32_t trx_id, const char *table_name /* 
         log_record_.del.hdr_.lsn_ = CLogManager::get_next_lsn(log_record_.del.hdr_.logrec_len_);
       }
     } break;
+    case REDO_UPDATE:{
+      // TODO
+      break;
+    }
     default:
       LOG_ERROR("flag is error");
       break;

@@ -21,6 +21,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "rc.h"
 #include "sql/parser/parse_defs.h"
+#include "storage/trx/trx.h"
 
 class Table;
 class CLogManager;
@@ -34,6 +35,7 @@ public:
 
   RC create_table(const char *table_name, int attribute_count, const AttrInfo *attributes);
   RC drop_table(const char *table_name);
+  RC update(const char *table_name, Trx *trx, const char *attribute_name, const Value *value, int condition_num, const Condition conditions[], int updated_count);
 
   Table *find_table(const char *table_name) const;
 
