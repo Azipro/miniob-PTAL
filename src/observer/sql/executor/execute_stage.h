@@ -11,6 +11,7 @@ See the Mulan PSL v2 for more details. */
 //
 // Created by Longda on 2021/4/13.
 //
+#pragma once
 
 #ifndef __OBSERVER_SQL_EXECUTE_STAGE_H__
 #define __OBSERVER_SQL_EXECUTE_STAGE_H__
@@ -22,6 +23,7 @@ See the Mulan PSL v2 for more details. */
 class SQLStageEvent;
 class SessionEvent;
 class SelectStmt;
+class TupleSet;
 
 class ExecuteStage : public common::Stage {
 public:
@@ -46,6 +48,8 @@ protected:
   RC do_show_tables(SQLStageEvent *sql_event);
   RC do_desc_table(SQLStageEvent *sql_event);
   RC do_select(SQLStageEvent *sql_event);
+  RC do_select_table(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables);
+  RC do_select_tables(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables);
   RC do_insert(SQLStageEvent *sql_event);
   RC do_update(SQLStageEvent *sql_event);
   RC do_delete(SQLStageEvent *sql_event);

@@ -41,6 +41,11 @@ public:
   const std::vector<Field> &query_fields() const { return query_fields_; }
   FilterStmt *filter_stmt() const { return filter_stmt_; }
 
+public:
+  void set_query_fields(const std::vector<Field> &query_fields) { query_fields_ = query_fields; }
+  void set_tables(const std::vector<Table *> &tables) { tables_ = tables; }
+  void set_Filter(FilterStmt *const filter_stmt) { filter_stmt_ = filter_stmt; }
+
 private:
   std::vector<Field> query_fields_;
   std::vector<Table *> tables_;
