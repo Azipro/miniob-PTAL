@@ -754,7 +754,10 @@ RC Table::update_record(Trx *trx, const char *attribute_name, const Value *value
   RC rc = RC::SUCCESS;
   // step1: filter
   CompositeConditionFilter filter;
-  filter.init(*this, conditions, condition_num);
+  rc = filter.init(*this, conditions, condition_num);
+  if(rc != RC::SUCCESS){ // 条件错误，也返回success，但是不继续查询
+    return RC::INVALID_ARGUMENT;
+  }
   // step2: scan
   RecordUpdater updater(*this, trx, value, attribute_name);
   rc = scan_record(nullptr, &filter, INT_MAX, &updater, record_reader_update_adapter);
