@@ -38,6 +38,10 @@ public:
       delete expression_;
       expression_ = nullptr;
     }
+    if (alias_) {
+      delete alias_;
+      alias_ = nullptr;
+    }
   }
 
   void set_alias(const char *alias)
@@ -228,4 +232,47 @@ public:
 private:
   std::vector<TupleCellSpec *> speces_;
   Tuple *tuple_ = nullptr;
+};
+
+class MagicTuple : public Tuple 
+{
+public:
+  MagicTuple() = default;
+  MagicTuple(const std::vector<TupleCell> &tuple) : tuple_(tuple) {}
+  virtual ~MagicTuple() = default;
+
+public:
+  int cell_num() const override
+  {
+    return tuple_.size();
+  }
+
+  RC cell_at(int index, TupleCell &cell) const override
+  {
+    if (index < 0 || index >= static_cast<int>(tuple_.size())) {
+      return RC::GENERIC_ERROR;
+    }
+
+    cell = tuple_[index];
+    return RC::SUCCESS;
+  }
+
+  RC find_cell(const Field &field, TupleCell &cell) const override
+  {
+    // To do nothing
+    return RC::SUCCESS; 
+  }
+
+  RC cell_spec_at(int index, const TupleCellSpec *&spec) const override
+  {
+    // To do nothing
+    return RC::SUCCESS;
+  }
+
+public:
+  const std::vector<TupleCell> &tuple() { return tuple_; }
+  void set_tuple(const std::vector<TupleCell> &tuple) { tuple_ = tuple; }
+
+private:
+  std::vector<TupleCell> tuple_;
 };

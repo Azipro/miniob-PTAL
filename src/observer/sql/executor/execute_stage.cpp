@@ -11,6 +11,7 @@ See the Mulan PSL v2 for more details. */
 //
 // Created by Meiyi & Longda on 2021/4/13.
 //
+#pragma once
 
 #include <string>
 #include <sstream>
@@ -27,6 +28,7 @@ See the Mulan PSL v2 for more details. */
 #include "event/sql_event.h"
 #include "event/session_event.h"
 #include "sql/expr/tuple.h"
+#include "sql/expr/tuple_set.h"
 #include "sql/operator/table_scan_operator.h"
 #include "sql/operator/index_scan_operator.h"
 #include "sql/operator/predicate_operator.h"
@@ -274,6 +276,40 @@ void tuple_to_string(std::ostream &os, const Tuple &tuple)
   }
 }
 
+void add_tupleset_header(TupleSet *magic_table, const ProjectOperator &oper) {
+  std::vector<TupleCellSpec*> speces;
+  const int cell_num = oper.tuple_cell_num();
+  const TupleCellSpec *cell_spec = nullptr;
+  for (int i = 0; i < cell_num; i++) {
+    oper.tuple_cell_spec_at(i, cell_spec);
+
+    assert(static_cast<FieldExpr*>(cell_spec->expression()));
+    FieldExpr *tmpf = static_cast<FieldExpr*>(cell_spec->expression());
+    TupleCellSpec *tmpt = new TupleCellSpec(new FieldExpr(tmpf->field().table(), tmpf->field().meta()));
+
+    char *alia = (char*)malloc(strlen(cell_spec->alias()) + 1);
+    strcpy(alia, cell_spec->alias());
+    tmpt->set_alias(alia);
+    speces.emplace_back(tmpt);
+  }
+  magic_table->set_speces(speces);
+}
+
+void tuple_to_magic_tuple(Tuple *tuple, MagicTuple &magic_tuple) {
+  std::vector<TupleCell> tmp_tuple;
+  TupleCell cell;
+  RC rc = RC::SUCCESS;
+  for (int i = 0; i < tuple->cell_num(); i++) {
+    rc = tuple->cell_at(i, cell);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to fetch field of cell. index=%d, rc=%s", i, strrc(rc));
+      break;
+    }
+    tmp_tuple.emplace_back(cell);
+  }
+  magic_tuple.set_tuple(tmp_tuple);
+}
+
 IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt)
 {
   const std::vector<FilterUnit *> &filter_units = filter_stmt->filter_units();
@@ -403,13 +439,35 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
 {
   SelectStmt *select_stmt = (SelectStmt *)(sql_event->stmt());
   SessionEvent *session_event = sql_event->session_event();
+  TupleSet *magic_table = nullptr;
   RC rc = RC::SUCCESS;
-  if (select_stmt->tables().size() != 1) {
-    LOG_WARN("select more than 1 tables is not supported");
-    rc = RC::UNIMPLENMENT;
+  if (select_stmt->tables().size() == 1) {
+    rc = do_select_table(select_stmt, magic_table, false);
+  } else if (select_stmt->tables().size() > 1) {
+    rc = do_select_tables(select_stmt, magic_table, true);
+  } else {
+    LOG_WARN("select less than 1 tables is not supported");
+    return RC::UNIMPLENMENT;;
+  }
+  
+  if (rc != RC::SUCCESS || magic_table == nullptr) {
+    LOG_ERROR("select result to a tuple set failed.");
     return rc;
   }
 
+  std::stringstream ss;
+  rc = magic_table->print_set(ss, select_stmt->query_fields());
+  if (rc != RC::SUCCESS) {
+    return rc;
+  }
+  session_event->set_response(ss.str());
+  delete magic_table;
+  return rc;
+}
+
+RC ExecuteStage::do_select_table(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables) {
+  assert(select_stmt->tables().size() == 1);
+  RC rc = RC::SUCCESS;
   Operator *scan_oper = try_to_create_index_scan_operator(select_stmt->filter_stmt());
   if (nullptr == scan_oper) {
     scan_oper = new TableScanOperator(select_stmt->tables()[0]);
@@ -422,7 +480,7 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
   ProjectOperator project_oper;
   project_oper.add_child(&pred_oper);
   for (const Field &field : select_stmt->query_fields()) {
-    project_oper.add_projection(field.table(), field.meta());
+    project_oper.add_projection(field.table(), field.meta(), &is_tables);
   }
   rc = project_oper.open();
   if (rc != RC::SUCCESS) {
@@ -430,29 +488,134 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
     return rc;
   }
 
-  std::stringstream ss;
-  print_tuple_header(ss, project_oper);
+  magic_table = new TupleSet();
+  add_tupleset_header(magic_table, project_oper);
+  LOG_INFO("begin to scan records.");
+  std::vector<MagicTuple> tuples;
   while ((rc = project_oper.next()) == RC::SUCCESS) {
     // get current record
     // write to response
-    Tuple * tuple = project_oper.current_tuple();
+    Tuple *tuple = project_oper.current_tuple();
+    MagicTuple magic_tuple;
     if (nullptr == tuple) {
       rc = RC::INTERNAL;
       LOG_WARN("failed to get current record. rc=%s", strrc(rc));
       break;
     }
-
-    tuple_to_string(ss, *tuple);
-    ss << std::endl;
+    tuple_to_magic_tuple(tuple, magic_tuple);
+    tuples.emplace_back(magic_tuple);
   }
-
+  magic_table->set_tuples(tuples);
   if (rc != RC::RECORD_EOF) {
     LOG_WARN("something wrong while iterate operator. rc=%s", strrc(rc));
     project_oper.close();
   } else {
     rc = project_oper.close();
   }
-  session_event->set_response(ss.str());
+  return rc;
+}
+
+RC ExecuteStage::do_select_tables(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables) {
+  RC rc = RC::SUCCESS;
+  std::vector<TupleSet*> tables_tuple_set(select_stmt->tables().size());
+
+  for (int i = 0 ; i < select_stmt->tables().size() ; ++ i) {
+    const Table *table = select_stmt->tables()[i];
+    SelectStmt *ss = new SelectStmt();
+    FilterStmt *filter_stmt = new FilterStmt();
+    std::vector<Field> query_fields;
+    std::vector<FilterUnit *> fu;
+
+    // 查出全部字段, 后续表间comp需要使用
+    const TableMeta &table_meta = table->table_meta();
+    const int field_num = table_meta.field_num();
+    for (int i = table_meta.sys_field_num(); i < field_num; i++) {
+      query_fields.push_back(Field(table, table_meta.field(i)));
+    }
+    // 找出与这张表相关的filter, 剩下没有使用的comp都是不同表之间的比较
+    for(auto filter : select_stmt->filter_stmt()->filter_units()) {
+      if (filter->left()->type() == ExprType::FIELD) {
+          const char *table_name = static_cast<FieldExpr*>(filter->left())->table_name();
+          if (0 != strcmp(table->name(), table_name)) {
+            continue;
+          }
+      }
+      if (filter->right()->type() == ExprType::FIELD) {
+          const char *table_name = static_cast<FieldExpr*>(filter->right())->table_name();
+          if (0 != strcmp(table->name(), table_name)) {
+            continue;
+          }
+      }
+
+      Expression *left = nullptr;
+      Expression *right = nullptr;
+      // 重新分配filter相关资源, 防止析构掉还需要使用的部分
+      if (filter->left()->type() == ExprType::FIELD) {
+        Field t = static_cast<FieldExpr*>(filter->left())->field();
+        left = new FieldExpr(t.table(), t.meta());
+      } else {
+        TupleCell t;
+        static_cast<ValueExpr*>(filter->left())->get_tuple_cell(t);
+        Value v;
+        v.type = t.attr_type();
+        v.data = (void *)t.data();
+        left = new ValueExpr(v);
+      }
+
+      if (filter->right()->type() == ExprType::FIELD) {
+        Field t = static_cast<FieldExpr*>(filter->right())->field();
+        right = new FieldExpr(t.table(), t.meta());
+      } else {
+        TupleCell t;
+        static_cast<ValueExpr*>(filter->right())->get_tuple_cell(t);
+        Value v;
+        v.type = t.attr_type();
+        v.data = (void *)t.data();
+        right = new ValueExpr(v);
+      }
+
+      FilterUnit *t = new FilterUnit();
+      t->set_comp(filter->comp());
+      t->set_left(left);
+      t->set_right(right);
+      fu.push_back(t);
+    }
+
+    filter_stmt->set_filter_units(fu);
+    ss->set_Filter(filter_stmt);
+    ss->set_query_fields(query_fields);
+    ss->set_tables(std::vector<Table*>{ const_cast<Table*>(table) });
+
+    rc = do_select_table(ss, tables_tuple_set[i], is_tables);
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("select table %s failed.", table->name());
+      return rc;
+    }
+
+    delete ss;
+  }
+  
+  TupleSet *tmp_result = new TupleSet();
+  assert(tables_tuple_set.size() >= 2);
+  rc = TupleSet::inner_join(tables_tuple_set[0], tables_tuple_set[1], tmp_result, select_stmt->filter_stmt());
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("join table set 0 failed.");
+  }
+  delete tables_tuple_set[0]; // 边join边删，节约内存
+  delete tables_tuple_set[1];
+
+  for (int i = 2 ; i < tables_tuple_set.size() ; ++ i) {
+    TupleSet *tmp = new TupleSet();
+    rc = TupleSet::inner_join(tmp_result, tables_tuple_set[i], tmp, select_stmt->filter_stmt());
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("join table set %d failed.", i);
+    }
+    delete tmp_result;
+    delete tables_tuple_set[i];
+    tmp_result = tmp;
+  }
+
+  magic_table = tmp_result; // 稍后析构
   return rc;
 }
 

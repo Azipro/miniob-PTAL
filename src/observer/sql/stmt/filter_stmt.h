@@ -92,6 +92,9 @@ public:
 
   static RC create_filter_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
 			       const Condition &condition, FilterUnit *&filter_unit);
+             
+public:
+  void set_filter_units(const std::vector<FilterUnit *> &filter_units) { filter_units_ = filter_units; }
 
 private:
   std::vector<FilterUnit *>  filter_units_; // 默认当前都是AND关系
