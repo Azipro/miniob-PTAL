@@ -93,6 +93,8 @@ ParserContext *get_context(yyscan_t scanner)
         WHERE
         AND
         SET
+		INNER
+		JOIN
         ON
         LOAD
         DATA
@@ -354,7 +356,18 @@ select:				/*  select 语句的语法解析树*/
 			CONTEXT->from_length=0;
 			CONTEXT->select_length=0;
 			CONTEXT->value_length = 0;
-	}
+		}
+	| SELECT select_attr FROM ID rel_list inner where SEMICOLON
+		{
+			selects_append_relation(&CONTEXT->ssql->sstr.selection, $4);
+			selects_append_conditions(&CONTEXT->ssql->sstr.selection, CONTEXT->conditions, CONTEXT->condition_length);
+
+			CONTEXT->ssql->flag=SCF_SELECT;
+			CONTEXT->condition_length=0;
+			CONTEXT->from_length=0;
+			CONTEXT->select_length=0;
+			CONTEXT->value_length = 0;
+		}
 	;
 
 select_attr:
@@ -408,6 +421,21 @@ rel_list:
 				selects_append_relation(&CONTEXT->ssql->sstr.selection, $2);
 		  }
     ;
+inner:
+	/* empty */
+	| INNER JOIN ID rel_list on inner {
+				selects_append_relation(&CONTEXT->ssql->sstr.selection, $3);
+		  }
+	| JOIN ID rel_list on inner {
+				selects_append_relation(&CONTEXT->ssql->sstr.selection, $2);
+		  }
+	;
+on: 
+	/* empty */
+	| ON condition condition_list {
+
+		  }
+	;
 where:
     /* empty */ 
     | WHERE condition condition_list {	
