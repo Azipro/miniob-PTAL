@@ -19,3 +19,5 @@ See the Mulan PSL v2 for more details. */
 std::string double2string(double v);
 
 bool like(const char * s, const char * p, int len);
+
+bool is_number(const char * s);
