@@ -729,8 +729,15 @@ RC ExecuteStage::do_insert(SQLStageEvent *sql_event)
 
   InsertStmt *insert_stmt = (InsertStmt *)stmt;
   Table *table = insert_stmt->table();
-
-  RC rc = table->insert_record(trx, insert_stmt->value_amount(), insert_stmt->values());
+  RC rc = RC::SUCCESS;
+  for (int i = 0 ; i < insert_stmt->inserts_amount() ; ++ i) {
+    const Inserts_more insert = insert_stmt->inserts()[i];
+    rc = table->insert_record(trx, insert.value_num, insert.values);
+    if (rc != RC::SUCCESS) {
+      // trx->rollback(); // 到后面到stage做rollback
+      break;
+    }
+  }
   if (rc == RC::SUCCESS) {
     if (!session->is_trx_multi_operation_mode()) {
       CLogRecord *clog_record = nullptr;

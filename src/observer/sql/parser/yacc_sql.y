@@ -16,7 +16,9 @@ typedef struct ParserContext {
   size_t condition_length;
   size_t from_length;
   size_t value_length;
+  size_t insert_length;
   Value values[MAX_NUM];
+  Inserts_more inserts_more[MAX_NUM];
   Condition conditions[MAX_NUM];
   CompOp comp;
 	char id[MAX_NUM];
@@ -43,7 +45,8 @@ void yyerror(yyscan_t scanner, const char *str)
   context->from_length = 0;
   context->select_length = 0;
   context->value_length = 0;
-  context->ssql->sstr.insertion.value_num = 0;
+  context->insert_length = 0;
+  context->ssql->sstr.insertion.inserts_more_num = 0;
   printf("parse sql failed. error=%s", str);
 }
 
@@ -285,7 +288,7 @@ ID_get:
 
 	
 insert:				/*insert   语句的语法解析树*/
-    INSERT INTO ID VALUES LBRACE value value_list RBRACE SEMICOLON 
+    INSERT INTO ID VALUES LBRACE insert_vaule value_list RBRACE value_tuple SEMICOLON 
 		{
 			// CONTEXT->values[CONTEXT->value_length++] = *$6;
 
@@ -295,17 +298,42 @@ insert:				/*insert   语句的语法解析树*/
 			// for(i = 0; i < CONTEXT->value_length; i++){
 			// 	CONTEXT->ssql->sstr.insertion.values[i] = CONTEXT->values[i];
       // }
-			inserts_init(&CONTEXT->ssql->sstr.insertion, $3, CONTEXT->values, CONTEXT->value_length);
+			inserts_init(&CONTEXT->ssql->sstr.insertion, $3, CONTEXT->inserts_more, CONTEXT->insert_length);
 
       //临时变量清零
-      CONTEXT->value_length=0;
+      // CONTEXT->value_length=0;
+	  inserts_more_destroy(CONTEXT->inserts_more, &CONTEXT->insert_length);
     }
+
+value_tuple:
+	/* empty */
+	| COMMA LBRACE insert_vaule value_list RBRACE value_tuple {
+
+	  }
+	;
 
 value_list:
     /* empty */
-    | COMMA value value_list  { 
+	{
+		inserts_more_init(&CONTEXT->inserts_more[CONTEXT->insert_length].value_num, &CONTEXT->insert_length);
+	}
+    | COMMA insert_vaule value_list  { 
   		// CONTEXT->values[CONTEXT->value_length++] = *$2;
 	  }
+    ;
+insert_vaule:
+    NUMBER{	
+		// 匹配时insert规则时，保存在CONTEXT->inserts_more->values中
+  		value_init_integer(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->inserts_more[CONTEXT->insert_length].value_num++], $1);
+		// 匹配Conditon规则时，values需要保存在CONTEXT->values中,使用下面的value规则
+		}
+    |FLOAT{
+  		value_init_float(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->inserts_more[CONTEXT->insert_length].value_num++], $1);
+		}
+    |SSS {
+			$1 = substr($1,1,strlen($1)-2);
+  		value_init_string(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->inserts_more[CONTEXT->insert_length].value_num++], $1);
+		}
     ;
 value:
     NUMBER{	

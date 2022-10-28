@@ -178,6 +178,8 @@ void DefaultStorageStage::handle_event(StageEvent *event)
     if (rc != RC::SUCCESS) {
       LOG_ERROR("Failed to commit trx. rc=%d:%s", rc, strrc(rc));
     }
+  } else {
+    current_trx->rollback();
   }
 
   session_event->set_response(response);

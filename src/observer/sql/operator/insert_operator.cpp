@@ -19,10 +19,17 @@ See the Mulan PSL v2 for more details. */
 
 RC InsertOperator::open()
 {
+  RC rc = RC::SUCCESS;
   Table *table = insert_stmt_->table();
-  const Value *values = insert_stmt_->values();
-  int value_amount = insert_stmt_->value_amount();
-  return table->insert_record(nullptr, value_amount, values); // TODO trx
+  for (int i = 0 ; i < insert_stmt_->inserts_amount() ; ++ i) {
+    const Inserts_more insert = insert_stmt_->inserts()[i];
+    rc = table->insert_record(nullptr, insert.value_num, insert.values);
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("insert record failed, but not rollback."); // TODO trx
+      break;
+    }
+  }
+  return rc;
 }
 
 RC InsertOperator::next()
