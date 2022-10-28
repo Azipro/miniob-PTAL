@@ -734,7 +734,7 @@ RC ExecuteStage::do_insert(SQLStageEvent *sql_event)
     const Inserts_more insert = insert_stmt->inserts()[i];
     rc = table->insert_record(trx, insert.value_num, insert.values);
     if (rc != RC::SUCCESS) {
-      trx->rollback();
+      // trx->rollback(); // 到后面到stage做rollback
       break;
     }
   }

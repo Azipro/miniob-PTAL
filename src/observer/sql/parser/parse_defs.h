@@ -215,7 +215,8 @@ void selects_append_relation(Selects *selects, const char *relation_name);
 void selects_append_conditions(Selects *selects, Condition conditions[], size_t condition_num);
 void selects_destroy(Selects *selects);
 
-void inserts_more_init(size_t *value_num, size_t *value_length, size_t *insert_length);
+void inserts_more_init(size_t *value_num, size_t *insert_length);
+void inserts_more_destroy(Inserts_more inserts_more[], size_t *insert_length);
 void inserts_init(Inserts *inserts, const char *relation_name, Inserts_more inserts_more[], size_t inserts_more_num);
 void inserts_destroy(Inserts *inserts);
 

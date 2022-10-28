@@ -288,7 +288,7 @@ ID_get:
 
 	
 insert:				/*insert   语句的语法解析树*/
-    INSERT INTO ID VALUES LBRACE value value_list RBRACE value_tuple SEMICOLON 
+    INSERT INTO ID VALUES LBRACE insert_vaule value_list RBRACE value_tuple SEMICOLON 
 		{
 			// CONTEXT->values[CONTEXT->value_length++] = *$6;
 
@@ -301,12 +301,13 @@ insert:				/*insert   语句的语法解析树*/
 			inserts_init(&CONTEXT->ssql->sstr.insertion, $3, CONTEXT->inserts_more, CONTEXT->insert_length);
 
       //临时变量清零
-      CONTEXT->value_length=0;
+      // CONTEXT->value_length=0;
+	  inserts_more_destroy(CONTEXT->inserts_more, &CONTEXT->insert_length);
     }
 
 value_tuple:
 	/* empty */
-	| COMMA LBRACE value value_list RBRACE value_tuple {
+	| COMMA LBRACE insert_vaule value_list RBRACE value_tuple {
 
 	  }
 	;
@@ -314,23 +315,36 @@ value_tuple:
 value_list:
     /* empty */
 	{
-		inserts_more_init(&CONTEXT->inserts_more[CONTEXT->insert_length].value_num, 
-							&CONTEXT->value_length, &CONTEXT->insert_length);
+		inserts_more_init(&CONTEXT->inserts_more[CONTEXT->insert_length].value_num, &CONTEXT->insert_length);
 	}
-    | COMMA value value_list  { 
+    | COMMA insert_vaule value_list  { 
   		// CONTEXT->values[CONTEXT->value_length++] = *$2;
 	  }
     ;
-value:
+insert_vaule:
     NUMBER{	
-  		value_init_integer(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->value_length++], $1);
+		// 匹配时insert规则时，保存在CONTEXT->inserts_more->values中
+  		value_init_integer(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->inserts_more[CONTEXT->insert_length].value_num++], $1);
+		// 匹配Conditon规则时，values需要保存在CONTEXT->values中,使用下面的value规则
 		}
     |FLOAT{
-  		value_init_float(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->value_length++], $1);
+  		value_init_float(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->inserts_more[CONTEXT->insert_length].value_num++], $1);
 		}
     |SSS {
 			$1 = substr($1,1,strlen($1)-2);
-  		value_init_string(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->value_length++], $1);
+  		value_init_string(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->inserts_more[CONTEXT->insert_length].value_num++], $1);
+		}
+    ;
+value:
+    NUMBER{	
+  		value_init_integer(&CONTEXT->values[CONTEXT->value_length++], $1);
+		}
+    |FLOAT{
+  		value_init_float(&CONTEXT->values[CONTEXT->value_length++], $1);
+		}
+    |SSS {
+			$1 = substr($1,1,strlen($1)-2);
+  		value_init_string(&CONTEXT->values[CONTEXT->value_length++], $1);
 		}
     ;
     

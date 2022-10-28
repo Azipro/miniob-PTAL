@@ -152,27 +152,30 @@ void selects_destroy(Selects *selects)
   selects->condition_num = 0;
 }
 
-void inserts_more_init(size_t *value_num, size_t *value_length, size_t *insert_length) {
-  if (*value_length > 0){ // 一组数据结尾，更新一个Inserts_more
-    *value_num = *value_length;
+void inserts_more_init(size_t *value_num, size_t *insert_length) {
+  if (*value_num > 0){ // 一组数据结尾，更新一个Inserts_more
     (*insert_length) ++;
-    *value_length = 0;
   }
+}
+
+void inserts_more_destroy(Inserts_more inserts_more[], size_t *insert_length){
+  for (int i = 0; i < *insert_length ; i ++) {
+    inserts_more[i].value_num = 0;
+  }
+  *insert_length = 0;
 }
 
 void inserts_init(Inserts *inserts, const char *relation_name, Inserts_more inserts_more[], size_t inserts_more_num) {
   for (auto i = 0 ; i < inserts_more_num ; i ++){
     assert(inserts_more[i].value_num <= sizeof(inserts->inserts_more[i].values)/sizeof(inserts->inserts_more[i].values[0]));
   }
-
   inserts->relation_name = strdup(relation_name);
   for (auto i = 0 ; i < inserts_more_num ; i ++){
     for (auto j = 0; j < inserts_more[i].value_num; j ++) {
-      inserts->inserts_more[i].values[j] = inserts_more[i].values[j];
+      inserts->inserts_more[i].values[j] = inserts_more[i].values[j]; // 这里的data是指向同一内存，所以上面inserts_more_destroy只清理value_num即可
     }
     inserts->inserts_more[i].value_num = inserts_more[i].value_num;
   }
-
   inserts->inserts_more_num = inserts_more_num;
 }
 
@@ -180,8 +183,8 @@ void inserts_destroy(Inserts *inserts) {
   free(inserts->relation_name);
   inserts->relation_name = nullptr;
 
-  for (size_t i = 0; i < inserts->inserts_more_num; i ++) {
-    for (size_t j = 0 ; j < inserts->inserts_more[i].value_num ; j ++){
+  for (int i = 0; i < inserts->inserts_more_num; i ++) {
+    for (int j = 0 ; j < inserts->inserts_more[i].value_num ; j ++){
       value_destroy(&inserts->inserts_more[i].values[j]);
     }
     inserts->inserts_more[i].value_num = 0;
