@@ -516,8 +516,11 @@ RC ExecuteStage::do_select_table(SelectStmt *select_stmt, TupleSet *&magic_table
 }
 
 RC ExecuteStage::do_select_tables(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables) {
+  assert(select_stmt->tables().size() > 1);
   RC rc = RC::SUCCESS;
-  std::vector<TupleSet*> tables_tuple_set(select_stmt->tables().size());
+  bool is_fisrt_table = true;
+  TupleSet *current_table_set;
+  TupleSet *tmp_result;
 
   for (int i = 0 ; i < select_stmt->tables().size() ; ++ i) {
     const Table *table = select_stmt->tables()[i];
@@ -532,6 +535,8 @@ RC ExecuteStage::do_select_tables(SelectStmt *select_stmt, TupleSet *&magic_tabl
     for (int i = table_meta.sys_field_num(); i < field_num; i++) {
       query_fields.push_back(Field(table, table_meta.field(i)));
     }
+
+    // TODO: 这里还可以优化, 预处理出之后filter需要用到的字段, 再结合需要query的字段，就可以剔除大部分无用数据
     // 找出与这张表相关的filter, 剩下没有使用的comp都是不同表之间的比较
     for(auto filter : select_stmt->filter_stmt()->filter_units()) {
       if (filter->left()->type() == ExprType::FIELD) {
@@ -586,33 +591,28 @@ RC ExecuteStage::do_select_tables(SelectStmt *select_stmt, TupleSet *&magic_tabl
     ss->set_query_fields(query_fields);
     ss->set_tables(std::vector<Table*>{ const_cast<Table*>(table) });
 
-    rc = do_select_table(ss, tables_tuple_set[i], is_tables);
+    rc = do_select_table(ss, current_table_set, is_tables);
     if (rc != RC::SUCCESS) {
       LOG_ERROR("select table %s failed.", table->name());
       return rc;
     }
+    // 这样在内存中的数据只会在某些情况下短暂冗余部分字段
+    if (is_fisrt_table) {
+      tmp_result = current_table_set;
+      is_fisrt_table = false;
+      continue;
+    }
 
-    delete ss;
-  }
-  
-  TupleSet *tmp_result = new TupleSet();
-  assert(tables_tuple_set.size() >= 2);
-  rc = TupleSet::inner_join(tables_tuple_set[0], tables_tuple_set[1], tmp_result, select_stmt->filter_stmt());
-  if (rc != RC::SUCCESS) {
-    LOG_ERROR("join table set 0 failed.");
-  }
-  delete tables_tuple_set[0]; // 边join边删，节约内存
-  delete tables_tuple_set[1];
-
-  for (int i = 2 ; i < tables_tuple_set.size() ; ++ i) {
     TupleSet *tmp = new TupleSet();
-    rc = TupleSet::inner_join(tmp_result, tables_tuple_set[i], tmp, select_stmt->filter_stmt());
+    rc = TupleSet::inner_join(tmp_result, current_table_set, tmp, select_stmt->filter_stmt());
     if (rc != RC::SUCCESS) {
       LOG_ERROR("join table set %d failed.", i);
     }
     delete tmp_result;
-    delete tables_tuple_set[i];
+    delete current_table_set;
     tmp_result = tmp;
+
+    delete ss;
   }
 
   magic_table = tmp_result; // 稍后析构
