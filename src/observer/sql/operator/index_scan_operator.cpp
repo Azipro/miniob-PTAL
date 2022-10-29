@@ -32,7 +32,7 @@ IndexScanOperator::IndexScanOperator(const Table *table, Index *index,
   if (left_user_key) {
     left_user_key_ = (char*)malloc(total_len);
     memcpy(left_user_key_, left_user_key, total_len);
-    
+    //LOG_INFO("%s", is_null(left_user_key, total_len) ? "null" : "..........not null");
 
     // LOG_INFO("left_user_key_ =  %d", *(int*)left_user_key_);
     // LOG_INFO("left_user_key =  %d", *(int*)left_user_key);

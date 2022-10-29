@@ -58,6 +58,15 @@ RC InsertStmt::create(Db *db, const Inserts &inserts, Stmt *&stmt)
       const AttrType field_type = field_meta->type();
       const AttrType value_type = values[i].type;
       if (field_type != value_type) { // TODO try to convert the value type to field type
+        if (value_type == NULL_) {
+          if (field_meta->nullable()) {
+            continue;
+          } else {
+            LOG_ERROR("field type is not nullable. table=%s, field=%s, field type=%d, value_type=%d",
+                table_name, field_meta->name(), field_type, value_type);
+            return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+          }
+        }
         if (field_type == DATES) {
           int32_t date = -1;
           RC rc = string_to_date((char*)values[i].data, date);

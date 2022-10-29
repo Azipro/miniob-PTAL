@@ -338,7 +338,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
 
       for (const FilterUnit * filter_unit : filter_units) {
 
-        if (filter_unit->comp() == NOT_EQUAL) {
+        if (filter_unit->comp() == NOT_EQUAL || filter_unit->comp() == NOT_EQUAL_IS) {
           continue;
         }
         Expression *left = filter_unit->left();
@@ -369,7 +369,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
             if (better_filter_single == nullptr) {
               better_filter_single = filter_unit;
               better_index_single = index;
-            } else if (comp == EQUAL_TO) {
+            } else if (comp == EQUAL_TO || comp == EQUAL_IS) {
               better_filter_single = filter_unit;
               better_index_single = index;
             }
@@ -423,22 +423,29 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
       if (left->type() == ExprType::VALUE && right->type() == ExprType::FIELD) {
         std::swap(left, right);
         switch (comp) {
-          case EQUAL_TO:    { comp = EQUAL_TO; }    break;
-          case LESS_EQUAL:  { comp = GREAT_THAN; }  break;
-          case NOT_EQUAL:   { comp = NOT_EQUAL; }   break;
-          case LESS_THAN:   { comp = GREAT_EQUAL; } break;
-          case GREAT_EQUAL: { comp = LESS_THAN; }   break;
-          case GREAT_THAN:  { comp = LESS_EQUAL; }  break;
+          case EQUAL_TO:      { comp = EQUAL_TO; }    break;
+          case LESS_EQUAL:    { comp = GREAT_THAN; }  break;
+          case NOT_EQUAL:     { comp = NOT_EQUAL; }   break;
+          case LESS_THAN:     { comp = GREAT_EQUAL; } break;
+          case GREAT_EQUAL:   { comp = LESS_THAN; }   break;
+          case GREAT_THAN:    { comp = LESS_EQUAL; }  break;
+          case EQUAL_IS:      { comp = EQUAL_IS; }    break;
           default: {
             LOG_WARN("should not happen");
           }
         }
       }
+      FieldExpr &left_field_expr = *(FieldExpr *)left;
       ValueExpr &right_value_expr = *(ValueExpr *)right;
       TupleCell value;
       right_value_expr.get_tuple_cell(value);
       if (value.attr_type() == CHARS) {
         attr_len[i] = value.length();
+      } else if (value.attr_type() == NULL_) { // 这里需要提前fix user key, 当然也可以在b+ tree再fix
+        attr_len[i] = left_field_expr.field().field_meta()->len();
+        void *data = malloc(attr_len[i]);
+        null_data(data, attr_len[i]);
+        value.set_data((char*)data);
       } else {
         attr_len[i] = 4; // 其他类型固定4bytes
       }
@@ -460,23 +467,30 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
     if (left->type() == ExprType::VALUE && right->type() == ExprType::FIELD) {
       std::swap(left, right);
       switch (comp) {
-        case EQUAL_TO:    { comp = EQUAL_TO; }    break;
-        case LESS_EQUAL:  { comp = GREAT_THAN; }  break;
-        case NOT_EQUAL:   { comp = NOT_EQUAL; }   break;
-        case LESS_THAN:   { comp = GREAT_EQUAL; } break;
-        case GREAT_EQUAL: { comp = LESS_THAN; }   break;
-        case GREAT_THAN:  { comp = LESS_EQUAL; }  break;
+        case EQUAL_TO:      { comp = EQUAL_TO; }    break;
+        case LESS_EQUAL:    { comp = GREAT_THAN; }  break;
+        case NOT_EQUAL:     { comp = NOT_EQUAL; }   break;
+        case LESS_THAN:     { comp = GREAT_EQUAL; } break;
+        case GREAT_EQUAL:   { comp = LESS_THAN; }   break;
+        case GREAT_THAN:    { comp = LESS_EQUAL; }  break;
+        case EQUAL_IS:      { comp = EQUAL_IS; }    break;
         default: {
           LOG_WARN("should not happen");
         }
       }
     }
-
+    
+    FieldExpr &left_field_expr = *(FieldExpr *)left;
     ValueExpr &right_value_expr = *(ValueExpr *)right;
     TupleCell value;
     right_value_expr.get_tuple_cell(value);
     if (value.attr_type() == CHARS) {
       attr_len[0] = value.length();
+    } else if (value.attr_type() == NULL_) { // 这里需要提前fix user key, 当然也可以在b+ tree再fix
+      attr_len[0] = left_field_expr.field().field_meta()->len();
+      void *data = malloc(attr_len[0]);
+      null_data(data, (size_t)attr_len[0]);
+      value.set_data((char*)data);
     } else {
       attr_len[0] = 4; // 其他类型固定4bytes
     }
@@ -520,6 +534,13 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
     left_inclusive = false;
     right_user_key = nullptr;
     right_inclusive = false;
+  } break;
+
+  case EQUAL_IS: {
+    left_user_key = user_key;
+    right_user_key = user_key;
+    left_inclusive = true;
+    right_inclusive = true;
   } break;
 
   default: {

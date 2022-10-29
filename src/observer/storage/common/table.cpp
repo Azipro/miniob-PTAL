@@ -25,6 +25,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/record/record_manager.h"
 #include "storage/common/condition_filter.h"
 #include "storage/common/meta_util.h"
+#include "util/util.h"
 #include "storage/index/index.h"
 #include "storage/index/bplus_tree_index.h"
 #include "storage/trx/trx.h"
@@ -391,7 +392,7 @@ RC Table::make_record(int value_num, const Value *values, char *&record_out)
   for (int i = 0; i < value_num; i++) {
     const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
     const Value &value = values[i];
-    if (field->type() != value.type) {
+    if (field->type() != value.type && value.type != AttrType::NULL_) {
       LOG_ERROR("Invalid value type. table name =%s, field name=%s, type=%d, but given=%d",
           table_meta_.name(),
           field->name(),
@@ -408,14 +409,23 @@ RC Table::make_record(int value_num, const Value *values, char *&record_out)
   for (int i = 0; i < value_num; i++) {
     const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
     const Value &value = values[i];
+
     size_t copy_len = field->len();
-    if (field->type() == CHARS) {
-      const size_t data_len = strlen((const char *)value.data);
-      if (copy_len > data_len) {
-        copy_len = data_len + 1;
+
+    if (value.type == NULL_) {
+      void *null_value = malloc(copy_len);
+      null_data(null_value, copy_len);
+      memcpy(record + field->offset(), null_value, copy_len);
+      free(null_value);
+    } else {
+      if (field->type() == CHARS) {
+        const size_t data_len = strlen((const char *)value.data);
+        if (copy_len > data_len) {
+          copy_len = data_len + 1;
+        }
       }
+      memcpy(record + field->offset(), value.data, copy_len);
     }
-    memcpy(record + field->offset(), value.data, copy_len);
   }
 
   record_out = record;
@@ -747,6 +757,10 @@ RC Table::update_record(Trx *trx, Record *record, const Value *value, const char
     value_destroy((Value *)value);
     value_init_date((Value *)value, date);
   }
+  // NULLABLE
+  if(!field->nullable() && value->type == NULL_) {
+    return RC::INVALID_ARGUMENT;
+  }
   // 类型不匹配
   if(field->type() != value->type && !(value->type == CHARS && field->type() == DATES)){
     LOG_WARN("Failed to update record: type mismatch, field type: %d, value type: %d", field->type(), value->type);
@@ -900,6 +914,7 @@ RC Table::convert_value(Value *value, AttrType dst_type){
   }
 }
 
+// TODO: update null值, 唯一索引应该可以重复null
 RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_list)
 {
   RC rc = RC::SUCCESS;
@@ -920,6 +935,10 @@ RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_
       }
       value_destroy((Value *)&value_list[i].value);
       value_init_date((Value *)&value_list[i].value, date);
+    }
+    // NULLABLE
+    if(!field->nullable() && value_list[i].value.type == NULL_) {
+      return RC::INVALID_ARGUMENT;
     }
     // 类型不匹配
     if (field->type() != value_list[i].value.type) {

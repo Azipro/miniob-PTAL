@@ -13,6 +13,7 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "storage/index/bplus_tree_index.h"
+#include "util/util.h"
 #include "common/log/log.h"
 
 BplusTreeIndex::~BplusTreeIndex() noexcept
@@ -116,7 +117,7 @@ RC BplusTreeIndex::sync()
   return index_handler_.sync();
 }
 
-char* BplusTreeIndex::construct_user_key(const char* record) {
+char* BplusTreeIndex::construct_user_key(const char* record, bool &have_null) {
   int key_len = 0;
   for(FieldMeta field : fields_meta_) {
     key_len += field.len();
@@ -125,20 +126,23 @@ char* BplusTreeIndex::construct_user_key(const char* record) {
   int cur_pos = 0;
   for(FieldMeta field : fields_meta_) {
     memcpy(user_key + cur_pos, record + field.offset(), field.len());
+    have_null =  is_null(record + field.offset(), field.len());
     cur_pos += field.len();
   }
   return user_key;
 }
 
 RC BplusTreeIndex::insert_entry(const char *record, const RID *rid) {
-  char* user_key = construct_user_key(record);
-  RC rc = index_handler_.insert_entry(user_key, rid);
+  bool have_null = false;
+  char* user_key = construct_user_key(record, have_null);
+  RC rc = index_handler_.insert_entry(user_key, rid, have_null);
   free(user_key);
   return rc;
 }
 
 RC BplusTreeIndex::delete_entry(const char *record, const RID *rid) {
-  char* user_key = construct_user_key(record);
+  bool have_null = false;
+  char* user_key = construct_user_key(record, have_null);
   RC rc = index_handler_.delete_entry(user_key, rid);
   free(user_key);
   return rc;
@@ -146,18 +150,20 @@ RC BplusTreeIndex::delete_entry(const char *record, const RID *rid) {
 
 RC BplusTreeIndex::update_entry(const char *record, const RID *rid, const char *old_record) {
   int key_len = 0;
+  bool have_null = false;
+  bool tmp = false;
   for(FieldMeta field : fields_meta_) {
     key_len += field.len();
   }
-  char* new_user_key = construct_user_key(record);
-  char* old_user_key = construct_user_key(old_record);
+  char* new_user_key = construct_user_key(record, have_null);
+  char* old_user_key = construct_user_key(old_record, tmp);
   if (0 == strncmp(new_user_key, old_user_key, key_len)){ // 相等, 无需操作
     free(new_user_key);
     free(old_user_key);
     return RC::SUCCESS;
   }
 
-  RC rc = index_handler_.update_entry(new_user_key, rid, old_user_key);
+  RC rc = index_handler_.update_entry(new_user_key, rid, old_user_key, have_null);
   free(new_user_key);
   free(old_user_key);
   return rc;

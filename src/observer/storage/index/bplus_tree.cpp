@@ -1389,14 +1389,14 @@ void BplusTreeHandler::free_key(char *key)
   mem_pool_item_->free(key);
 }
 
-RC BplusTreeHandler::insert_entry(const char *user_key, const RID *rid)
+RC BplusTreeHandler::insert_entry(const char *user_key, const RID *rid, bool have_null)
 {
   if (user_key == nullptr || rid == nullptr) {
     LOG_WARN("Invalid arguments, key is empty or rid is empty");
     return RC::INVALID_ARGUMENT;
   }
 
-  if(is_unique_) { // 表中已有重复key, 暂不做处理
+  if(is_unique_ && !have_null) { // 表中已有重复key, 暂不做处理, null可以重复
     std::list<RID> tmp;
     get_entry(user_key, file_header_.attr_length, tmp);
     if(tmp.size() > 0) {
@@ -1445,14 +1445,14 @@ RC BplusTreeHandler::insert_entry(const char *user_key, const RID *rid)
 }
 
 
-RC BplusTreeHandler::update_entry(const char *user_key, const RID *rid, const char *user_key_old)
+RC BplusTreeHandler::update_entry(const char *user_key, const RID *rid, const char *user_key_old, bool have_null)
 {
   if (user_key == nullptr || rid == nullptr) {
     LOG_WARN("Invalid arguments, key is empty or rid is empty");
     return RC::INVALID_ARGUMENT;
   }
 
-  if(is_unique_) {
+  if(is_unique_ && !have_null) {
     std::list<RID> tmp;
     get_entry(user_key, file_header_.attr_length, tmp);
     if(tmp.size() > 0) { // 更新之后的值已经存在
@@ -1469,7 +1469,7 @@ RC BplusTreeHandler::update_entry(const char *user_key, const RID *rid, const ch
     return rc;
   }
 
-  rc = insert_entry(user_key, rid);
+  rc = insert_entry(user_key, rid, have_null);
   if (rc != RC::SUCCESS) {
     LOG_WARN("updating: insert entry faild.");
     return rc;
@@ -1851,10 +1851,6 @@ RC BplusTreeScanner::open(const char *left_user_key, int *left_len, int left_num
       fixed_left_key = nullptr;
     }
 
-    char *tmp = (char*)malloc(4);
-    memmove(tmp, left_key, 4);
-    LOG_ERROR("left key: %d", *tmp);
-
     rc = tree_handler_.find_leaf(left_key, left_frame_);
 
     if (rc != RC::SUCCESS) {
@@ -1949,10 +1945,6 @@ RC BplusTreeScanner::open(const char *left_user_key, int *left_len, int left_num
       delete[] fixed_right_key;
       fixed_right_key = nullptr;
     }
-
-    char *tmp = (char*)malloc(4);
-    memmove(tmp, right_key, 4);
-    LOG_ERROR("right key: %d", *tmp);
 
     rc = tree_handler_.find_leaf(right_key, right_frame_);
     if (rc != RC::SUCCESS) {

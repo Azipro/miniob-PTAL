@@ -25,6 +25,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/default/disk_buffer_pool.h"
 #include "sql/parser/parse_defs.h"
 #include "util/comparator.h"
+#include "util/util.h"
 #include "storage/common/field_meta.h"
 
 #define EMPTY_RID_PAGE_NUM -1
@@ -53,15 +54,30 @@ public:
     for (int i = 0 ; i < attr_num_ ; ++ i) {
       switch (attr_type_[i]) {
         case INTS: case DATES: {
-          result = compare_int((void *)(v1 + offset), (void *)(v2 + offset));
+          bool v1_null = is_null(v1 + offset, sizeof(int));
+          bool v2_null = is_null(v2 + offset, sizeof(int));
+          if (v1_null && v2_null) result = 0;
+          else if (v1_null) result = -1;
+          else if (v2_null) result = 1;
+          else result = compare_int((void *)(v1 + offset), (void *)(v2 + offset));
         }
           break;
         case FLOATS: {
-          result = compare_float((void *)(v1 + offset), (void *)(v2 + offset));
+          bool v1_null = is_null(v1 + offset, sizeof(float));
+          bool v2_null = is_null(v2 + offset, sizeof(float));
+          if (v1_null && v2_null) result = 0;
+          else if (v1_null) result = -1;
+          else if (v2_null) result = 1;
+          else result = compare_float((void *)(v1 + offset), (void *)(v2 + offset));
         }
           break;
         case CHARS: {
-          result = compare_string((void *)(v1 + offset), attr_length_each_[i], (void *)(v2 + offset), attr_length_each_[i]);
+          bool v1_null = is_null(v1 + offset, attr_length_each_[i]);
+          bool v2_null = is_null(v2 + offset, attr_length_each_[i]);
+          if (v1_null && v2_null) result = 0;
+          else if (v1_null) result = -1;
+          else if (v2_null) result = 1;
+          else result = compare_string((void *)(v1 + offset), attr_length_each_[i], (void *)(v2 + offset), attr_length_each_[i]);
         }
           break;
         default:{
@@ -131,22 +147,27 @@ public:
     for (int i = 0 ; i < attr_num_ ; ++ i) {
       switch (attr_type_[i]) {
         case INTS: case DATES: {
-          result += std::to_string(*(int*)(v + offset));
+          if (is_null(v + offset, sizeof(int))) result += "NULL";
+          else result += std::to_string(*(int*)(v + offset));
         }
           break;
         case FLOATS: {
-          result += std::to_string(*(float*)(v + offset));
+          if (is_null(v + offset, sizeof(float))) result += "NULL";
+          else result += std::to_string(*(float*)(v + offset));
         }
           break;
         case CHARS: {
-          std::string str;
-          for (int j = offset; j < offset + attr_length_each_[i]; ++ j) {
-            if (v[j] == 0) {
-              break;
+          if (is_null(v + offset, attr_length_each_[i])) result += "NULL";
+          else {
+            std::string str;
+            for (int j = offset; j < offset + attr_length_each_[i]; ++ j) {
+              if (v[j] == 0) {
+                break;
+              }
+              str.push_back(v[j]);
             }
-            str.push_back(v[j]);
+            result += str;
           }
-          result += str;
         }
           break;
         default:{
@@ -439,9 +460,9 @@ public:
    * 即向索引中插入一个值为（user_key，rid）的键值对
    * @note 这里假设user_key的内存大小与attr_length 一致
    */
-  RC insert_entry(const char *user_key, const RID *rid);
+  RC insert_entry(const char *user_key, const RID *rid, bool have_null);
 
-  RC update_entry(const char *user_key, const RID *rid, const char *user_key_old);
+  RC update_entry(const char *user_key, const RID *rid, const char *user_key_old, bool have_null);
 
   /**
    * 从IndexHandle句柄对应的索引中删除一个值为（*pData，rid）的索引项

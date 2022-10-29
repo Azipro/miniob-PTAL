@@ -116,10 +116,33 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     }
   }
 
+  // 只能是is null 或 is not null
+  if (condition.comp == EQUAL_IS || condition.comp == NOT_EQUAL_IS) {
+    if (condition.right_is_attr || condition.right_value.type != NULL_) {
+      LOG_ERROR("Must be \"is null or is not null\".");
+      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    }
+    
+    // Table *table = nullptr;
+    // const FieldMeta *field = nullptr;
+    // rc = get_table_and_field(db, default_table, tables, condition.left_attr, table, field);
+    // if (rc != RC::SUCCESS) {
+    //   LOG_WARN("cannot find left_attr ");
+    //   return rc;
+    // }
+    // if (!field->nullable()) {
+    //   LOG_ERROR("%s.%s is not nullable.", table->name(), field->name());
+    //   return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    // }
+  }
+
   Expression *left = nullptr;
   Expression *right = nullptr;
   AttrType left_type = AttrType::UNDEFINED;
   AttrType right_type = AttrType::UNDEFINED;
+  bool left_nullable = false;
+  bool right_nullable = false;
+
   if (condition.left_is_attr) {
     Table *table = nullptr;
     const FieldMeta *field = nullptr;
@@ -130,9 +153,11 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     }
     left = new FieldExpr(table, field);
     left_type = field->type();
+    left_nullable = field->nullable();
   } else {
     left = new ValueExpr(condition.left_value);
     left_type = condition.left_value.type;
+    left_nullable = condition.left_value.type == NULL_ ? true : false;
   }
 
   if (condition.right_is_attr) {
@@ -146,9 +171,11 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     }
     right = new FieldExpr(table, field);
     right_type = field->type();
+    right_nullable = field->nullable();
   } else {
     right = new ValueExpr(condition.right_value);
     right_type = condition.right_value.type;
+    right_nullable = condition.right_value.type == NULL_ ? true : false;
   }
 
   // check and transform date type
@@ -162,9 +189,10 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
       }
       value_destroy((Value*)&condition.right_value);
       value_init_date((Value*)&condition.right_value, date);
+      delete right;
+      right = new ValueExpr(condition.right_value);
+      right_type = condition.right_value.type;
     }
-    right = new ValueExpr(condition.right_value);
-    right_type = condition.right_value.type;
   } else if (!condition.left_is_attr and left_type != DATES and condition.right_is_attr and right_type == DATES) {
     if (condition.left_value.type == CHARS) {
       int32_t date = -1;
@@ -175,14 +203,24 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
       }
       value_destroy((Value*)&condition.left_value);
       value_init_date((Value*)&condition.left_value, date);
+      delete left;
+      left = new ValueExpr(condition.left_value);
+      left_type = condition.left_value.type;
     }
-    left = new ValueExpr(condition.left_value);
-    left_type = condition.left_value.type;
   }
 
-  if (left_type == right_type ||
-      ((left_type == AttrType::INTS || left_type == AttrType::FLOATS || left_type == AttrType::CHARS) &&
-          (right_type == AttrType::INTS || right_type == AttrType::FLOATS || right_type == AttrType::CHARS))) {
+  if (condition.left_is_attr && !left_nullable && right_type == NULL_) {
+    LOG_ERROR("left field is not nullable.");
+    return RC::INVALID_ARGUMENT;
+  }
+  if (condition.right_is_attr && !right_nullable && left_type == NULL_) {
+    LOG_ERROR("right field is not nullable.");
+    return RC::INVALID_ARGUMENT;
+  }
+
+  if (left_type == right_type || (left_type == DATES && right_type == NULL_) || (right_type == DATES && left_type == NULL_) || 
+      ((left_type == INTS || left_type == FLOATS || left_type == CHARS || left_type == NULL_) &&
+          (right_type == INTS || right_type == FLOATS || right_type == CHARS || right_type == NULL_))) {
     filter_unit = new FilterUnit;
     filter_unit->set_comp(comp);
     filter_unit->set_left(left);

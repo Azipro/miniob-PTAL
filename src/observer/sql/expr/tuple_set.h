@@ -39,7 +39,7 @@ public:
         iter = nullptr;
       }
     }
-    speces_.clear();
+    speces_.clear(); 
     tuples_.clear();
   }
 
@@ -248,23 +248,27 @@ public:
       switch (query_fields[i].agg_type()) {
         case AGG_MAX:
           rc = max_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         case AGG_MIN:
           rc = min_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         case AGG_SUM:
           rc = sum_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         case AGG_COUNT:
-          rc = count_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          if (0 == strcmp(query_fields[i].agg_str(), "*") || is_number(query_fields[i].agg_str())) {
+            rc = count_cell(query_index[i], cell, false);
+          } else {
+            rc = count_cell(query_index[i], cell, true);
+          }
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         case AGG_AVG:
           rc = avg_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         default:
           LOG_WARN("unknown aggregation function");
@@ -343,23 +347,27 @@ public:
       switch (query_fields[i].agg_type()) {
         case AGG_MAX:
           rc = max_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         case AGG_MIN:
           rc = min_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         case AGG_SUM:
           rc = sum_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         case AGG_COUNT:
-          rc = count_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          if (0 == strcmp(query_fields[i].agg_str(), "*") || is_number(query_fields[i].agg_str())) {
+            rc = count_cell(query_index[i], cell, false);
+          } else {
+            rc = count_cell(query_index[i], cell, true);
+          }
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         case AGG_AVG:
           rc = avg_cell(query_index[i], cell);
-          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          LOG_INFO("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
           break;
         default:
           LOG_WARN("unknown aggregation function");
@@ -395,7 +403,7 @@ private:
     for (int i = 1; i < tuples_.size(); ++i) {
       TupleCell cell2;
       tuples_[i].cell_at(j, cell2);
-      if (cell.compare(cell2) < 0) {
+      if (cell.compare(cell2) < 0 || cell.attr_type() == NULL_) {
         cell.set_type(cell2.attr_type());
         cell.set_length(cell2.length());
         cell.set_data(cell2.data());
@@ -418,7 +426,7 @@ private:
     for (int i = 1; i < tuples_.size(); ++i) {
       TupleCell cell2;
       tuples_[i].cell_at(j, cell2);
-      if (cell.compare(cell2) > 0) {
+      if (cell.compare(cell2) > 0 || cell.attr_type() == NULL_) {
         cell.set_type(cell2.attr_type());
         cell.set_length(cell2.length());
         cell.set_data(cell2.data());
@@ -436,25 +444,36 @@ private:
     tuples_[0].cell_at(j, cell1);
     cell.set_type(cell1.attr_type());
     cell.set_length(cell1.length());
-    cell.set_data(cell1.data());
+    cell.set_data(cell1.data());  
+    
+    int first_not_null = 1;
+    while (cell.attr_type() == NULL_ && first_not_null < tuples_.size()) {
+      tuples_[first_not_null ++].cell_at(j, cell1);
+      cell.set_type(cell1.attr_type());
+      cell.set_length(cell1.length());
+      cell.set_data(cell1.data()); 
+    }
+
     AttrType attr_type = cell.attr_type();
     if (attr_type == INTS) {
       int n = (int)*cell.data();
-      for (int i = 1; i < tuples_.size(); ++i) {
+      for (int i = first_not_null; i < tuples_.size(); ++i) {
         TupleCell cell2;
         tuples_[i].cell_at(j, cell2);
+        if (cell2.attr_type() == NULL_) continue;
         n += (int)*cell2.data();
       }
-      char * data = (char * )malloc(sizeof(int));
+      char *data = (char *)malloc(sizeof(int)); // 这里有内存泄漏
       memcpy(data, (char *)&n, sizeof(int));
       cell.set_data(data);
-      cell.set_type(INTS);
+      cell.set_type(cell.attr_type());
       cell.set_length(sizeof(int));
     } else if (attr_type == FLOATS) {
       float n = string_to_float(double2string(*(float*)cell.data()).c_str());
-      for (int i = 1; i < tuples_.size(); ++i) {
+      for (int i = first_not_null; i < tuples_.size(); ++i) {
         TupleCell cell2;
         tuples_[i].cell_at(j, cell2);
+        if (cell2.attr_type() == NULL_) continue;
         n += string_to_float(double2string(*(float*)cell2.data()).c_str());
       }
       char * data = (char * )malloc(sizeof(float));
@@ -464,9 +483,10 @@ private:
       cell.set_length(sizeof(float));
     } else if (attr_type == CHARS) {
       float n = string_to_float(cell.data());
-      for (int i = 1; i < tuples_.size(); ++i) {
+      for (int i = first_not_null; i < tuples_.size(); ++i) {
         TupleCell cell2;
         tuples_[i].cell_at(j, cell2);
+        if (cell2.attr_type() == NULL_) continue;
         n += string_to_float(cell2.data());
       }
       char * data = (char * )malloc(sizeof(float));
@@ -474,16 +494,19 @@ private:
       cell.set_data(data);
       cell.set_type(FLOATS);
       cell.set_length(sizeof(float));
+    } else { // NULL
+      // 无需处理
     }
     return RC::SUCCESS;
   }
 
-  RC count_cell(int j, TupleCell & cell)
+  RC count_cell(int j, TupleCell & cell, bool ignore_null)
   {
     int n = 0;
     for (int i = 0; i < tuples_.size(); ++i) {
       TupleCell cell2;
       tuples_[i].cell_at(j, cell2);
+      if (ignore_null && cell2.attr_type() == NULL_) continue;
       if (cell2.data() != nullptr) {
         n++;
       }
@@ -504,10 +527,21 @@ private:
     if (rc != RC::SUCCESS) {
       return rc;
     }
-    rc = count_cell(j, cell2);
+    rc = count_cell(j, cell2, true);
     if (rc != RC::SUCCESS) {
       return rc;
     }
+
+    if (cell1.attr_type() == NULL_ || cell2.attr_type() == NULL_) {
+      void *data = malloc(sizeof(float));
+      null_data(data, sizeof(float));
+      cell.set_data((char*)data);
+      cell.set_type(NULL_);
+      cell.set_length(sizeof(float));
+
+      return RC::SUCCESS;
+    }
+
     float n;
     AttrType attr_type = cell1.attr_type();
     if (attr_type == INTS) {
@@ -516,11 +550,18 @@ private:
       n = *(float *)cell1.data();
     }
     int m = *(int *)cell2.data();
-    n /= m;
-    char * data = (char *)malloc(sizeof(float));
-    memcpy(data, (char *)&n, sizeof(float));
-    cell.set_data(data);
-    cell.set_type(FLOATS);
+    if (m == 0) {
+      void *data = malloc(sizeof(float));
+      null_data(data, sizeof(float));
+      cell.set_data((char*)data);
+      cell.set_type(NULL_);
+    } else {
+      n /= m;
+      char * data = (char *)malloc(sizeof(float));
+      memcpy(data, (char *)&n, sizeof(float));
+      cell.set_data(data);
+      cell.set_type(FLOATS);
+    }
     cell.set_length(sizeof(float));
     return RC::SUCCESS;
   }
@@ -542,6 +583,12 @@ void speces_copy(const std::vector<TupleCellSpec*> &src, std::vector<TupleCellSp
 }
 
 bool tuple_cell_comp(TupleCell &left, TupleCell &right, CompOp comp) {
+  if (comp != EQUAL_IS && comp != NOT_EQUAL_IS) {
+    if (left.attr_type() == NULL_ || right.attr_type() == NULL_){
+      return false;
+    }
+  }
+
   const int compare = left.compare(right);
   bool filter_result = false;
   switch (comp) {
@@ -570,6 +617,12 @@ bool tuple_cell_comp(TupleCell &left, TupleCell &right, CompOp comp) {
   case OP_NOT_LIKE: {
     filter_result = !like(left.data(), right.data(), left.length());
     LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left.data(), right.data(), filter_result);
+  } break;
+  case EQUAL_IS: {
+      filter_result = (left.attr_type() == NULL_);
+    } break;
+  case NOT_EQUAL_IS: {
+    filter_result = (left.attr_type() != NULL_);;
   } break;
   default: {
     LOG_WARN("invalid compare type: %d", comp);
