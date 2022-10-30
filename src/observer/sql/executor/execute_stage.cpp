@@ -33,10 +33,12 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/index_scan_operator.h"
 #include "sql/operator/predicate_operator.h"
 #include "sql/operator/delete_operator.h"
+#include "sql/operator/update_operator.h"
 #include "sql/operator/project_operator.h"
 #include "sql/stmt/stmt.h"
 #include "sql/stmt/select_stmt.h"
 #include "sql/stmt/delete_stmt.h"
+#include "sql/stmt/update_stmt.h"
 #include "sql/stmt/insert_stmt.h"
 #include "sql/stmt/filter_stmt.h"
 #include "storage/common/table.h"
@@ -144,8 +146,7 @@ void ExecuteStage::handle_request(common::StageEvent *event)
       do_insert(sql_event);
     } break;
     case StmtType::UPDATE: {
-      // 这是骗人的
-      //do_update(sql_event);
+      do_update(sql_event);
     } break;
     case StmtType::DELETE: {
       do_delete(sql_event);
@@ -173,10 +174,6 @@ void ExecuteStage::handle_request(common::StageEvent *event)
     } break;
     case SCF_DROP_TABLE: {
       do_drop_table(sql_event);
-      break;
-    }
-    case SCF_UPDATE:{
-      do_update(sql_event);
       break;
     }
     case SCF_DROP_INDEX:
@@ -782,17 +779,62 @@ UPDATE Update_table_1 SET T_NAME='N02' WHERE COL1=0 AND COL2=0;
 
 RC ExecuteStage::do_update(SQLStageEvent *sql_event)
 {
+  // SessionEvent *session_event = sql_event->session_event();
+  // const Updates &update = sql_event ->query()->sstr.update;
+  // Db *db = session_event->session()->get_current_db();
+  // Session *session = session_event->session();
+  // Trx *trx = session->current_trx();
+  // CLogManager *clog_manager = db->get_clog_manager();
+  // // 不支持事务
+  // RC rc = db->update(update.relation_name, trx, update.attribute_name, &update.value, update.condition_num, update.conditions, -1);
+  // if (rc == RC::SUCCESS) {
+  //   session_event->set_response("SUCCESS\n");
+  // } else {
+  //   session_event->set_response("FAILURE\n");
+  // }
+  // redo
+  RC rc = RC::SUCCESS;
   SessionEvent *session_event = sql_event->session_event();
-  const Updates &update = sql_event ->query()->sstr.update;
-  Db *db = session_event->session()->get_current_db();
   Session *session = session_event->session();
   Trx *trx = session->current_trx();
-  // 不支持事务
-  RC rc = db->update(update.relation_name, trx, update.attribute_name, &update.value, update.condition_num, update.conditions, -1);
-  if (rc == RC::SUCCESS) {
-    session_event->set_response("SUCCESS\n");
-  } else {
+  Db *db = session_event->session()->get_current_db();
+  CLogManager *clog_manager = db->get_clog_manager();
+  UpdateStmt *update_stmt = (UpdateStmt *)(sql_event->stmt());
+  Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt());
+  if (nullptr == scan_oper) {
+    scan_oper = new TableScanOperator(update_stmt->table());
+  }
+
+  DEFER([&] () {delete scan_oper;});
+
+  PredicateOperator pred_oper(update_stmt->filter_stmt());
+  pred_oper.add_child(scan_oper);
+  UpdateOperator update_oper(update_stmt, trx);
+  update_oper.add_child(&pred_oper);
+
+  rc = update_oper.open();
+  if (rc != RC::SUCCESS) {
     session_event->set_response("FAILURE\n");
+  } else {
+    session_event->set_response("SUCCESS\n");
+    // trx和clog未处理
+    // if (!session->is_trx_multi_operation_mode()) {
+    //   CLogRecord *clog_record = nullptr;
+    //   rc = clog_manager->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record);
+    //   if (rc != RC::SUCCESS || clog_record == nullptr) {
+    //     session_event->set_response("FAILURE\n");
+    //     return rc;
+    //   }
+
+    //   rc = clog_manager->clog_append_record(clog_record);
+    //   if (rc != RC::SUCCESS) {
+    //     session_event->set_response("FAILURE\n");
+    //     return rc;
+    //   } 
+
+    //   trx->next_current_id();
+    //   session_event->set_response("SUCCESS\n");
+    // }
   }
   return rc;
 }
