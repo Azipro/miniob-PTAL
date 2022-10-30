@@ -453,7 +453,11 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
   }
 
   std::stringstream ss;
-  rc = magic_table->print_set(ss, select_stmt->query_fields());
+  if (select_stmt->agg_num() > 0) {
+    rc = magic_table->print_agg_set(ss, select_stmt->query_fields());
+  } else {
+    rc = magic_table->print_set(ss, select_stmt->query_fields());
+  }
   if (rc != RC::SUCCESS) {
     return rc;
   }
@@ -479,6 +483,7 @@ RC ExecuteStage::do_select_table(SelectStmt *select_stmt, TupleSet *&magic_table
   for (const Field &field : select_stmt->query_fields()) {
     project_oper.add_projection(field.table(), field.meta(), &is_tables);
   }
+
   rc = project_oper.open();
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to open operator");

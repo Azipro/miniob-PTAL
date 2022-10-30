@@ -30,6 +30,18 @@ void relation_attr_init(RelAttr *relation_attr, const char *relation_name, const
     relation_attr->relation_name = nullptr;
   }
   relation_attr->attribute_name = strdup(attribute_name);
+  relation_attr->aggregation_type = AGG_NO;
+}
+
+void aggregation_attr_init(RelAttr *relation_attr, const char *relation_name, const char *attribute_name, AggType aggregation_type)
+{
+  if (relation_name != nullptr) {
+    relation_attr->relation_name = strdup(relation_name);
+  } else {
+    relation_attr->relation_name = nullptr;
+  }
+  relation_attr->attribute_name = strdup(attribute_name);
+  relation_attr->aggregation_type = aggregation_type;
 }
 
 void relation_attr_destroy(RelAttr *relation_attr)
@@ -118,6 +130,10 @@ void selects_init(Selects *selects, ...);
 void selects_append_attribute(Selects *selects, RelAttr *rel_attr)
 {
   selects->attributes[selects->attr_num++] = *rel_attr;
+  if (rel_attr->aggregation_type != AGG_NO) {
+    selects->agg_num++;
+  }
+  LOG_INFO("attr_num=%d, agg_num=%d", selects->attr_num, selects->agg_num);
 }
 void selects_append_relation(Selects *selects, const char *relation_name)
 {

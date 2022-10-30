@@ -25,7 +25,7 @@ public:
 
   virtual ~ProjectOperator() = default;
 
-  void add_projection(const Table *table, const FieldMeta *field, const bool *is_tables);
+  void add_projection(const Table *table, const FieldMeta *field_meta, const bool *is_tables);
 
   RC open() override;
   RC next() override;
