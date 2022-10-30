@@ -780,24 +780,16 @@ insert into Update_table_1 values(4, 'N3', 0, 1);
 select * from Update_table_1;
 UPDATE Update_table_1 SET t_name='N02' WHERE col1=0 AND col2=0;
 UPDATE Update_table_1 SET T_NAME='N02' WHERE COL1=0 AND COL2=0;
+
+create table t (id int, name char, col1 int, col2 int);
+insert into t values(1, '111', 1, 1);
+insert into t values(2, '222', 2, 2);
+select * from t;
+update t set col1 = 10;
 */
 
 RC ExecuteStage::do_update(SQLStageEvent *sql_event)
 {
-  // SessionEvent *session_event = sql_event->session_event();
-  // const Updates &update = sql_event ->query()->sstr.update;
-  // Db *db = session_event->session()->get_current_db();
-  // Session *session = session_event->session();
-  // Trx *trx = session->current_trx();
-  // CLogManager *clog_manager = db->get_clog_manager();
-  // // 不支持事务
-  // RC rc = db->update(update.relation_name, trx, update.attribute_name, &update.value, update.condition_num, update.conditions, -1);
-  // if (rc == RC::SUCCESS) {
-  //   session_event->set_response("SUCCESS\n");
-  // } else {
-  //   session_event->set_response("FAILURE\n");
-  // }
-  // redo
   RC rc = RC::SUCCESS;
   SessionEvent *session_event = sql_event->session_event();
   Session *session = session_event->session();

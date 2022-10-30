@@ -52,6 +52,18 @@ void relation_attr_destroy(RelAttr *relation_attr)
   relation_attr->attribute_name = nullptr;
 }
 
+void set_value_init(SetValue *set_value, const char* attribute_name, Value *value){
+  LOG_INFO("append attribute_name = %s", attribute_name);
+  set_value->attribute_name = strdup(attribute_name);
+  set_value->value = *value;
+}
+
+void set_value_destory(SetValue *set_value){
+  free(set_value->attribute_name);
+  value_destroy(&set_value->value);
+  set_value->attribute_name = nullptr;
+}
+
 void value_init_integer(Value *value, int v)
 {
   value->type = INTS;
@@ -231,12 +243,9 @@ void deletes_destroy(Deletes *deletes)
   deletes->relation_name = nullptr;
 }
 
-void updates_init(Updates *updates, const char *relation_name, const char *attribute_name, Value *value,
-    Condition conditions[], size_t condition_num)
+void updates_init(Updates *updates, const char *relation_name, Condition conditions[], size_t condition_num)
 {
   updates->relation_name = strdup(relation_name);
-  updates->attribute_name = strdup(attribute_name);
-  updates->value = *value;
 
   assert(condition_num <= sizeof(updates->conditions) / sizeof(updates->conditions[0]));
   for (size_t i = 0; i < condition_num; i++) {
@@ -245,14 +254,19 @@ void updates_init(Updates *updates, const char *relation_name, const char *attri
   updates->condition_num = condition_num;
 }
 
+void update_append_value_list(Updates *updates, SetValue *set_value)
+{
+  updates->value_list[updates->update_num++] = *set_value;
+}
+
 void updates_destroy(Updates *updates)
 {
   free(updates->relation_name);
-  free(updates->attribute_name);
+  for (size_t i = 0; i < updates->update_num; i++) {
+    set_value_destory(&updates->value_list[i]);
+  }
+  updates->update_num = 0;
   updates->relation_name = nullptr;
-  updates->attribute_name = nullptr;
-
-  value_destroy(&updates->value);
 
   for (size_t i = 0; i < updates->condition_num; i++) {
     condition_destroy(&updates->conditions[i]);

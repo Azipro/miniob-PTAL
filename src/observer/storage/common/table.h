@@ -62,6 +62,7 @@ public:
   RC update_record(Trx *trx, const char *attribute_name, const Value *value, int condition_num,
       const Condition conditions[], int *updated_count);
   RC update_record(Trx *trx, Record *record, const Value *value, const char *attribute_name);
+  RC update_records(Trx *trx, Record *record, std::vector<SetValue> &value_list); // 更新多个属性
   RC delete_record(Trx *trx, ConditionFilter *filter, int *deleted_count);
   RC delete_record(Trx *trx, Record *record);
   RC recover_delete_record(Record *record);

@@ -18,12 +18,9 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include "sql/stmt/filter_stmt.h"
 
-UpdateStmt::UpdateStmt(Table *table, Value *values, int value_amount)
-  : table_ (table), values_(values), value_amount_(value_amount)
-{}
 
-UpdateStmt::UpdateStmt(Table *table, const char * attribute_name, const Value *values, int value_amount, FilterStmt *filter_stmt)
-  : table_ (table), attribute_name_(attribute_name), values_(values), value_amount_(value_amount), filter_stmt_(filter_stmt)
+UpdateStmt::UpdateStmt(Table *table, FilterStmt *filter_stmt)
+  : table_ (table), filter_stmt_(filter_stmt)
 {}
 
 RC UpdateStmt::create(Db *db, const Updates &update, Stmt *&stmt)
@@ -52,8 +49,13 @@ RC UpdateStmt::create(Db *db, const Updates &update, Stmt *&stmt)
     LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
     return rc;
   }
-  const char * attribute_name = update.attribute_name;
+  std::vector<SetValue> value_list(update.update_num);
+  for(int i = update.update_num-1; i >= 0; i--){
+    value_list[update.update_num - i - 1] = update.value_list[i];
+  }
 
-  stmt = new UpdateStmt(table, attribute_name, &update.value, 1, filter_stmt);
+  UpdateStmt* update_stmt = new UpdateStmt(table, filter_stmt);
+  update_stmt->set_value_list(value_list);
+  stmt = update_stmt;
   return rc;
 }
