@@ -29,6 +29,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/index/bplus_tree_index.h"
 #include "storage/trx/trx.h"
 #include "storage/clog/clog.h"
+#include "util/date.h"
 
 Table::~Table()
 {
@@ -710,10 +711,22 @@ RC Table::update_record(Trx *trx, Record *record, const Value *value, const char
   const FieldMeta *field = table_meta_.field(attribute_name);
   // 属性不存在
   if(field == nullptr){
+    LOG_WARN("Failed to update record: attribute [%s] does not exist", attribute_name);
     return RC::INVALID_ARGUMENT;
   }
+  int32_t date = -1;
+  if(value->type == CHARS && field->type() == DATES){
+    rc = string_to_date((char *)value->data, date);
+    if(rc != RC::SUCCESS){
+      LOG_WARN("Failed to convert chars to date");
+      return rc;
+    }
+    value_destroy((Value *)value);
+    value_init_date((Value *)value, date);
+  }
   // 类型不匹配
-  if(field->type() != value->type){
+  if(field->type() != value->type && !(value->type == CHARS && field->type() == DATES)){
+    LOG_WARN("Failed to update record: type mismatch, field type: %d, value type: %d", field->type(), value->type);
     return RC::INVALID_ARGUMENT;
   }
   size_t copy_len = field->len();
