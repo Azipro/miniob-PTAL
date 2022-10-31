@@ -94,15 +94,28 @@ typedef struct _Condition {
   Value right_value;   // right-hand side value if right_is_attr = FALSE
 } Condition;
 
+typedef enum
+{
+  ORDER_ASC,
+  ORDER_DESC,
+} OrderType;
+
+typedef struct {
+  RelAttr relation_attr;
+  OrderType order_type;
+} OrderBy;
+
 // struct of select
 typedef struct {
-  size_t agg_num;         // Length of aggregation functions in Select clause
+  size_t agg_num;                 // Length of aggregation functions in Select clause
   size_t attr_num;                // Length of attrs in Select clause
   RelAttr attributes[MAX_NUM];    // attrs in Select clause
   size_t relation_num;            // Length of relations in From clause
   char *relations[MAX_NUM];       // relations in From clause
   size_t condition_num;           // Length of conditions in Where clause
   Condition conditions[MAX_NUM];  // conditions in Where clause
+  size_t order_num;               // Length in Order By clause
+  OrderBy order_by[MAX_NUM];      // Order By clause
 } Selects;
 
 typedef struct {

@@ -73,3 +73,22 @@ private:
   AggType agg_type_ = AGG_NO;
   char * agg_str_;
 };
+
+class OrderField : public Field
+{
+public:
+  OrderField() = default;
+  OrderField(const Table *table, const FieldMeta *field, const OrderType order_type) :
+        table_(table), field_(field), order_type_(order_type) {}
+
+  const Table *table() const { return table_; }
+  const FieldMeta *meta() const { return field_; }
+  const char *table_name() const { return table_->name(); }
+  const char *field_name() const { return field_->name(); }
+  OrderType order_type() const { return order_type_; }
+
+private:
+  const Table *table_ = nullptr;
+  const FieldMeta *field_ = nullptr;
+  OrderType order_type_ = ORDER_ASC;
+};

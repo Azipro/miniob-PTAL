@@ -381,13 +381,55 @@ public:
     }
     return RC::SUCCESS;
   }
+  static bool compare_tuple(MagicTuple tuple1, MagicTuple tuple2)
+  {
+    for (int i = 0; i < order_index_.size(); ++i) {
+      TupleCell cell1, cell2;
+      tuple1.cell_at(order_index_[i], cell1);
+      tuple2.cell_at(order_index_[i], cell2);
+      int res = cell1.compare(cell2);
+      if (res != 0) {
+        if (order_type_[i] == ORDER_ASC)
+          return res < 0;
+        else if (order_type_[i] == ORDER_DESC)
+          return res > 0;
+      }
+    }
+    return false;
+  }
+
 public:
   void set_speces(const std::vector<TupleCellSpec*> &speces) { speces_ = speces; }
   void set_tuples(const std::vector<MagicTuple> &tuples) { tuples_ = tuples; }
+  std::vector<MagicTuple> tuples() { return tuples_; }
+
+  RC set_order_index(const std::vector<OrderField> &order_fields)
+  {
+    order_index_ = std::vector<int>(order_fields.size(), -1);
+    order_type_ = std::vector<OrderType>(order_fields.size(), ORDER_ASC);
+    for (int i = 0 ; i < order_fields.size() ; ++ i) {
+      order_type_[i] = order_fields[i].order_type();
+      for (int j = 0 ; j < speces_.size() ; ++ j) {
+        const char *table_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->table_name();
+        const char *field_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->field_name();
+        if (0 == strcmp(order_fields[i].table_name(), table_name) && 0 == strcmp(order_fields[i].field_name(), field_name)) {
+          order_index_[i] = j;
+          break;
+        }
+      }
+      if (order_index_[i] == -1) {
+        LOG_ERROR("not match order field in tuple set.");
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+    }
+    return RC::SUCCESS;
+  }
 
 private:
   std::vector<TupleCellSpec*> speces_;
   std::vector<MagicTuple> tuples_;
+  static std::vector<int> order_index_;
+  static std::vector<OrderType> order_type_;
 
   RC max_cell(int j, TupleCell & cell)
   {
@@ -566,6 +608,9 @@ private:
     return RC::SUCCESS;
   }
 };
+
+std::vector<int> TupleSet::order_index_;
+std::vector<OrderType> TupleSet::order_type_;
 
 void speces_copy(const std::vector<TupleCellSpec*> &src, std::vector<TupleCellSpec*> &dst, HashLocation &locat){
   int index = dst.size();

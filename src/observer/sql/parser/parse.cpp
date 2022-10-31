@@ -50,6 +50,7 @@ void relation_attr_destroy(RelAttr *relation_attr)
   free(relation_attr->attribute_name);
   relation_attr->relation_name = nullptr;
   relation_attr->attribute_name = nullptr;
+  relation_attr->aggregation_type = AGG_NO;
 }
 
 void set_value_init(SetValue *set_value, const char* attribute_name, Value *value){
@@ -163,6 +164,30 @@ void attr_info_destroy(AttrInfo *attr_info)
   attr_info->name = nullptr;
 }
 
+void order_init(OrderBy *order_by, const char *relation_name, const char *attribute_name, OrderType order_type)
+{
+  RelAttr relation_attr;
+  if (relation_name != nullptr) {
+    relation_attr.relation_name = strdup(relation_name);
+  } else {
+    relation_attr.relation_name = nullptr;
+  }
+  relation_attr.attribute_name = strdup(attribute_name);
+  relation_attr.aggregation_type = AGG_NO;
+  order_by->relation_attr = relation_attr;
+  order_by->order_type = order_type;
+}
+
+void order_destroy(OrderBy *order_by)
+{
+  free(order_by->relation_attr.relation_name);
+  free(order_by->relation_attr.attribute_name);
+  order_by->relation_attr.relation_name = nullptr;
+  order_by->relation_attr.attribute_name = nullptr;
+  order_by->relation_attr.aggregation_type = AGG_NO;
+  order_by->order_type = ORDER_ASC;
+}
+
 void selects_init(Selects *selects, ...);
 void selects_append_attribute(Selects *selects, RelAttr *rel_attr)
 {
@@ -170,7 +195,6 @@ void selects_append_attribute(Selects *selects, RelAttr *rel_attr)
   if (rel_attr->aggregation_type != AGG_NO) {
     selects->agg_num++;
   }
-  LOG_INFO("attr_num=%d, agg_num=%d", selects->attr_num, selects->agg_num);
 }
 void selects_append_relation(Selects *selects, const char *relation_name)
 {
@@ -184,6 +208,11 @@ void selects_append_conditions(Selects *selects, Condition conditions[], size_t 
     selects->conditions[i] = conditions[i];
   }
   selects->condition_num = condition_num;
+}
+
+void selects_append_order(Selects *selects, OrderBy *order_by)
+{
+  selects->order_by[selects->order_num++] = *order_by;
 }
 
 void selects_destroy(Selects *selects)
@@ -203,6 +232,11 @@ void selects_destroy(Selects *selects)
     condition_destroy(&selects->conditions[i]);
   }
   selects->condition_num = 0;
+
+  for (size_t i = 0; i < selects->order_num; i++) {
+    order_destroy(&selects->order_by[i]);
+  }
+  selects->order_num = 0;
 }
 
 void inserts_more_init(size_t *value_num, size_t *insert_length) {

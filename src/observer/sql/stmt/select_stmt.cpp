@@ -173,12 +173,60 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
     return rc;
   }
 
+  // collect order fields in `order by` statement
+  std::vector<OrderField> order_fields;
+  for (int i = 0; i < select_sql.order_num; i++) {
+    const OrderBy &order_by = select_sql.order_by[i];
+
+    if (!common::is_blank(order_by.relation_attr.relation_name)) { // TODO
+      const char *table_name = order_by.relation_attr.relation_name;
+      const char *field_name = order_by.relation_attr.attribute_name;
+
+      if (0 == strcmp(table_name, "*")) {
+        if (0 != strcmp(field_name, "*")) {
+          LOG_WARN("invalid field name while table is *. attr=%s", field_name);
+          return RC::SCHEMA_FIELD_MISSING;
+        }
+      } else {
+        auto iter = table_map.find(table_name);
+        if (iter == table_map.end()) {
+          LOG_WARN("no such table in from list: %s", table_name);
+          return RC::SCHEMA_FIELD_MISSING;
+        }
+
+        Table *table = iter->second;
+        const FieldMeta *field_meta = table->table_meta().field(field_name);
+        if (nullptr == field_meta) {
+          LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
+          return RC::SCHEMA_FIELD_MISSING;
+        }
+
+        order_fields.push_back(OrderField(table, field_meta, order_by.order_type));
+      }
+    } else {
+      if (tables.size() != 1) {
+        LOG_WARN("invalid. I do not know the attr's table. attr=%s", order_by.relation_attr.attribute_name);
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+
+      Table *table = tables[0];
+      const FieldMeta *field_meta = table->table_meta().field(order_by.relation_attr.attribute_name);
+      if (nullptr == field_meta) {
+        LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), order_by.relation_attr.attribute_name);
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+
+      order_fields.push_back(OrderField(table, field_meta, order_by.order_type));
+    }
+  }
+
   // everything alright
   SelectStmt *select_stmt = new SelectStmt();
   select_stmt->tables_.swap(tables);
   select_stmt->query_fields_.swap(query_fields);
   select_stmt->filter_stmt_ = filter_stmt;
   select_stmt->agg_num_ = select_sql.agg_num;
+  select_stmt->order_fields_.swap(order_fields);
   stmt = select_stmt;
   return RC::SUCCESS;
 }
