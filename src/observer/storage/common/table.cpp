@@ -187,20 +187,19 @@ RC Table::open(const char *meta_file, const char *base_dir, CLogManager *clog_ma
   const int index_num = table_meta_.index_num();
   for (int i = 0; i < index_num; i++) {
     const IndexMeta *index_meta = table_meta_.index(i);
-    const FieldMeta *field_meta = table_meta_.field(index_meta->field());
-    if (field_meta == nullptr) {
-      LOG_ERROR("Found invalid index meta info which has a non-exists field. table=%s, index=%s, field=%s",
-          name(),
-          index_meta->name(),
-          index_meta->field());
-      // skip cleanup
-      //  do all cleanup action in destructive Table function
-      return RC::GENERIC_ERROR;
+    std::vector<const FieldMeta*> fields_meta;
+    for(const std::string & field : index_meta->fields()) {
+      if (table_meta_.field(field.c_str()) == nullptr) {
+        LOG_PANIC("Found invalid index meta info which has a non-exists field. table=%s, index=%s, field=%s",
+                  name(), index_meta->name(), field.c_str());
+        return RC::GENERIC_ERROR;
+      }
+      fields_meta.push_back(table_meta_.field(field.c_str()));
     }
 
     BplusTreeIndex *index = new BplusTreeIndex();
     std::string index_file = table_index_file(base_dir, name(), index_meta->name());
-    rc = index->open(index_file.c_str(), *index_meta, *field_meta);
+    rc = index->open(index_file.c_str(), *index_meta, fields_meta);
     if (rc != RC::SUCCESS) {
       delete index;
       LOG_ERROR("Failed to open index. table=%s, index=%s, file=%s, rc=%d:%s",
@@ -275,6 +274,7 @@ RC Table::insert_record(Trx *trx, Record *record)
   if (trx != nullptr) {
     rc = trx->insert_record(this, record);
     if (rc != RC::SUCCESS) {
+      LOG_ERROR("insert failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
       LOG_ERROR("Failed to log operation(insertion) to trx");
 
       RC rc2 = record_handler_->delete_record(&record->rid());
@@ -304,6 +304,16 @@ RC Table::insert_record(Trx *trx, Record *record)
           rc2,
           strrc(rc2));
     }
+
+    // 插入索引失败之后, 不仅要删table里面的记录, 事务里面的记录也要删, 不然同一个事务里面, 下次insert会使用同一个可用rid, 会导致事务执行失败
+    if (trx != nullptr) {
+      rc2 = trx->delete_record(this, record);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("delete failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
+        LOG_ERROR("Failed to log operation(deletion) to trx");
+        return rc;
+      }
+    }
     return rc;
   }
 
@@ -320,6 +330,8 @@ RC Table::insert_record(Trx *trx, Record *record)
       return rc;
     }
   }
+
+  LOG_INFO("insert record success. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
   return rc;
 }
 
@@ -586,36 +598,45 @@ static RC insert_index_record_reader_adapter(Record *record, void *context)
   return inserter.insert_index(record);
 }
 
-RC Table::create_index(Trx *trx, const char *index_name, const char *attribute_name)
+RC Table::create_index(Trx *trx, const char* index_name, IndexType type, const std::vector<std::string> &attrs)
 {
-  if (common::is_blank(index_name) || common::is_blank(attribute_name)) {
-    LOG_INFO("Invalid input arguments, table name is %s, index_name is blank or attribute_name is blank", name());
+  if (index_name == nullptr || common::is_blank(index_name)) {
     return RC::INVALID_ARGUMENT;
   }
-  if (table_meta_.index(index_name) != nullptr || table_meta_.find_index_by_field((attribute_name))) {
-    LOG_INFO("Invalid input arguments, table name is %s, index %s exist or attribute %s exist index",
-             name(), index_name, attribute_name);
+
+  for(const std::string& attr : attrs) {
+    if(attr.empty() || common::is_blank(attr.c_str()) ) {
+      return RC::INVALID_ARGUMENT;
+    }
+  }
+
+  if (table_meta_.index(index_name) != nullptr ||
+      table_meta_.find_index_by_field(attrs)) {
     return RC::SCHEMA_INDEX_EXIST;
   }
 
-  const FieldMeta *field_meta = table_meta_.field(attribute_name);
-  if (!field_meta) {
-    LOG_INFO("Invalid input arguments, there is no field of %s in table:%s.", attribute_name, name());
-    return RC::SCHEMA_FIELD_MISSING;
+  std::vector<const FieldMeta*> fields_meta;
+
+  for(auto field = attrs.rbegin(); field != attrs.rend(); field++) {
+    if(table_meta_.field((*field).c_str()) == nullptr) {
+      return RC::SCHEMA_FIELD_MISSING;
+    }
+    fields_meta.push_back(table_meta_.field( (*field).c_str()));
   }
 
   IndexMeta new_index_meta;
-  RC rc = new_index_meta.init(index_name, *field_meta);
+  RC rc = new_index_meta.init(index_name, fields_meta, type);
   if (rc != RC::SUCCESS) {
-    LOG_INFO("Failed to init IndexMeta in table:%s, index_name:%s, field_name:%s",
-             name(), index_name, attribute_name);
+    LOG_INFO("Failed to init IndexMeta in table:%s, index_name:%s", name(), index_name);
     return rc;
   }
+
+  bool is_unique = (type == UNIQUE_INDEX) ? true : false;
 
   // 创建索引相关数据
   BplusTreeIndex *index = new BplusTreeIndex();
   std::string index_file = table_index_file(base_dir_.c_str(), name(), index_name);
-  rc = index->create(index_file.c_str(), new_index_meta, *field_meta);
+  rc = index->create(index_file.c_str(), new_index_meta, is_unique, fields_meta);
   if (rc != RC::SUCCESS) {
     delete index;
     LOG_ERROR("Failed to create bplus tree index. file name=%s, rc=%d:%s", index_file.c_str(), rc, strrc(rc));
@@ -715,8 +736,9 @@ RC Table::update_record(Trx *trx, Record *record, const Value *value, const char
     LOG_WARN("Failed to update record: attribute [%s] does not exist", attribute_name);
     return RC::INVALID_ARGUMENT;
   }
-  int32_t date = -1;
+  
   if(value->type == CHARS && field->type() == DATES){
+    int32_t date = -1;
     rc = string_to_date((char *)value->data, date);
     if(rc != RC::SUCCESS){
       LOG_WARN("Failed to convert chars to date");
@@ -737,7 +759,19 @@ RC Table::update_record(Trx *trx, Record *record, const Value *value, const char
       copy_len = data_len + 1;
     }
   }
-  memcpy(record->data() + field->offset(), value->data, copy_len);
+  
+  int total_key_len = 0;
+  for (auto field : *(table_meta_.field_metas())) {
+    total_key_len += field.len();
+  }
+
+  Record old_record;
+  char *data = (char*)malloc(total_key_len);
+  memcpy(data, record->data(), total_key_len);
+  old_record.set_data(data);
+  old_record.set_rid(RID(record->rid().page_num, record->rid().slot_num));
+
+  memcpy(record->data() + field->offset(), value->data, copy_len);  // 其实在这里就已经完成更新了
   rc = record_handler_->update_record(record);
   if (rc != RC::SUCCESS) {
     LOG_ERROR("Failed to update record (rid=%d.%d). rc=%d:%s",
@@ -745,16 +779,64 @@ RC Table::update_record(Trx *trx, Record *record, const Value *value, const char
     return rc;
   }
 
+
+  if (trx != nullptr) {
+    rc = trx->update_record(this, record);
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("update failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
+      LOG_ERROR("Failed to log operation(updation) to trx");
+
+      RC rc2 = record_handler_->update_record(&old_record);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback record data when trx update failed. table name=%s, rc=%d:%s",
+            name(),
+            rc2,
+            strrc(rc2));
+      }
+      free(data);
+      return rc;
+    }
+  }
+
+  rc = update_entry_of_indexes(record->data(), record->rid(), old_record.data());
+  if (rc != RC::SUCCESS) {
+    RC rc2 = update_entry_of_indexes(old_record.data(), old_record.rid(), record->data()); // update index back   record->old_record
+    if (rc2 != RC::SUCCESS) {
+      LOG_ERROR("Failed to rollback index data when update index entries failed. table name=%s, rc=%d:%s",
+          name(),
+          rc2,
+          strrc(rc2));
+    }
+    rc2 = record_handler_->update_record(&old_record); // update record back
+    if (rc2 != RC::SUCCESS) {
+      LOG_PANIC("Failed to rollback record data when update index entries failed. table name=%s, rc=%d:%s",
+          name(),
+          rc2,
+          strrc(rc2));
+    }
+
+    if (trx != nullptr) {
+      rc2 = trx->update_record(this, record); // insert rollback是delete, update rollback是update回原值。 这里直接删除trx的这次操作会不会更好?
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("update failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
+        LOG_ERROR("Failed to log operation(updation) to trx");
+        free(data);
+        return rc;
+      }
+    }
+  }
+  free(data);
+
   // if (trx != nullptr) {
   //   rc = trx->update_record(this, record);
     
   //   CLogRecord *clog_record = nullptr;
-  //   rc = clog_manager_->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record, name(), 0, record);
+  //   rc = clog_manager_->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record, name(), table_meta_.record_size(), record);
   //   if (rc != RC::SUCCESS) {
   //     LOG_ERROR("Failed to create a clog record. rc=%d:%s", rc, strrc(rc));
   //     return rc;
   //   }
-  //   rc = clog_manager_->clog_append_record(clog_record);
+  //   rc = clog_manager_->clog_append_record(clog_record); // LOGBUF_FULL
   //   if (rc != RC::SUCCESS) {
   //     return rc;
   //   }
@@ -821,13 +903,6 @@ RC Table::convert_value(Value *value, AttrType dst_type){
 RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_list)
 {
   RC rc = RC::SUCCESS;
-  // TODO: 是否需要更新索引？
-  // rc = update_entry_of_indexes(record->data(), record->rid(), false); 
-  // if (rc != RC::SUCCESS) {
-  //   LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
-  //               record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
-  //   return rc;
-  // } 
   std::vector<int> offset_list, copy_len_list;
   for(int i = 0; i < value_list.size(); i++){
     const FieldMeta *field = table_meta_.field(value_list[i].attribute_name);
@@ -866,13 +941,74 @@ RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_
     offset_list.push_back(field->offset());
     copy_len_list.push_back(copy_len);
   }
+  
+  int total_key_len = 0;
+  for (auto field : *(table_meta_.field_metas())) {
+    total_key_len += field.len();
+  }
+
+  Record old_record;
+  char *data = (char*)malloc(total_key_len);
+  memcpy(data, record->data(), total_key_len);
+  old_record.set_data(data);
+  old_record.set_rid(RID(record->rid().page_num, record->rid().slot_num));
+
   for(int i = 0; i < value_list.size(); i++){
     memcpy(record->data() + offset_list[i], value_list[i].value.data, copy_len_list[i]);
   }
+
   rc = record_handler_->update_record(record);
   if (rc != RC::SUCCESS) {
     LOG_ERROR("Failed to update record (rid=%d.%d). rc=%d:%s",
                 record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+    return rc;
+  }
+
+  if (trx != nullptr) {
+    rc = trx->update_record(this, record);
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("update failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
+      LOG_ERROR("Failed to log operation(updation) to trx");
+
+      RC rc2 = record_handler_->update_record(&old_record);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback record data when trx update failed. table name=%s, rc=%d:%s",
+            name(),
+            rc2,
+            strrc(rc2));
+      }
+      free(data);
+      return rc;
+    }
+  }
+
+  rc = update_entry_of_indexes(record->data(), record->rid(), old_record.data());
+  if (rc != RC::SUCCESS) {
+    RC rc2 = update_entry_of_indexes(old_record.data(), old_record.rid(), record->data()); // update index back   record->old_record
+    if (rc2 != RC::SUCCESS) {
+      LOG_ERROR("Failed to rollback index data when update index entries failed. table name=%s, rc=%d:%s",
+          name(),
+          rc2,
+          strrc(rc2));
+    }
+    rc2 = record_handler_->update_record(&old_record); // update record back
+    if (rc2 != RC::SUCCESS) {
+      LOG_PANIC("Failed to rollback record data when update index entries failed. table name=%s, rc=%d:%s",
+          name(),
+          rc2,
+          strrc(rc2));
+    }
+
+    if (trx != nullptr) {
+      rc2 = trx->update_record(this, record); // insert rollback是delete, update rollback是update回原值。 这里直接删除trx的这次操作会不会更好?
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("update failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
+        LOG_ERROR("Failed to log operation(updation) to trx");
+        free(data);
+        return rc;
+      }
+    }
+    free(data);
     return rc;
   }
 
@@ -890,6 +1026,7 @@ RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_
   //     return rc;
   //   }
   // }
+  LOG_INFO("rc = %s", strrc(rc));
   return rc;
 }
 
@@ -917,6 +1054,7 @@ public:
   RC delete_record(Record *record)
   {
     RC rc = RC::SUCCESS;
+    // 这段代码表明此record一定存在
     rc = table_.delete_record(trx_, record);
     if (rc == RC::SUCCESS) {
       deleted_count_++;
@@ -1041,6 +1179,19 @@ RC Table::insert_entry_of_indexes(const char *record, const RID &rid)
   return rc;
 }
 
+
+RC Table::update_entry_of_indexes(const char *record, const RID &rid, const char *old_record)
+{
+  RC rc = RC::SUCCESS;
+  for (Index *index : indexes_) {
+    rc = index->update_entry(record, &rid, old_record);
+    if (rc != RC::SUCCESS) {
+      break;
+    }
+  }
+  return rc;
+}
+
 RC Table::delete_entry_of_indexes(const char *record, const RID &rid, bool error_on_not_exists)
 {
   RC rc = RC::SUCCESS;
@@ -1067,7 +1218,9 @@ Index *Table::find_index(const char *index_name) const
 Index *Table::find_index_by_field(const char *field_name) const
 {
   const TableMeta &table_meta = this->table_meta();
-  const IndexMeta *index_meta = table_meta.find_index_by_field(field_name);
+  std::vector<std::string> tmp_fields;
+  tmp_fields.push_back(table_meta.field(field_name)->name());
+  const IndexMeta *index_meta = table_meta_.find_index_by_field(tmp_fields);
   if (index_meta != nullptr) {
     return this->find_index(index_meta->name());
   }
@@ -1095,7 +1248,9 @@ IndexScanner *Table::find_index_for_scan(const DefaultConditionFilter &filter)
     return nullptr;
   }
 
-  const IndexMeta *index_meta = table_meta_.find_index_by_field(field_meta->name());
+  std::vector<std::string> tmp_fields;
+  tmp_fields.push_back(field_meta->name());
+  const IndexMeta *index_meta = table_meta_.find_index_by_field(tmp_fields);
   if (nullptr == index_meta) {
     return nullptr;
   }
@@ -1148,7 +1303,7 @@ IndexScanner *Table::find_index_for_scan(const DefaultConditionFilter &filter)
     left_len = left_key != nullptr ? strlen(left_key) : 0;
     right_len = right_key != nullptr ? strlen(right_key) : 0;
   }
-  return index->create_scanner(left_key, left_len, left_inclusive, right_key, right_len, right_inclusive);
+  return index->create_scanner(left_key, &left_len, tmp_fields.size(), left_inclusive, right_key, &right_len, tmp_fields.size(), right_inclusive);
 }
 
 IndexScanner *Table::find_index_for_scan(const ConditionFilter *filter)

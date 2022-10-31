@@ -23,18 +23,21 @@ public:
   BplusTreeIndex() = default;
   virtual ~BplusTreeIndex() noexcept;
 
-  RC create(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta);
-  RC open(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta);
+  RC create(const char *file_name, const IndexMeta &index_meta, bool is_unique, const std::vector<const FieldMeta*> &field_meta);
+  RC open(const char *file_name, const IndexMeta &index_meta, const std::vector<const FieldMeta*> &fields_meta);
   RC close();
 
   RC insert_entry(const char *record, const RID *rid) override;
+  RC update_entry(const char *record, const RID *rid, const char *old_record) override;
   RC delete_entry(const char *record, const RID *rid) override;
+
+  char* construct_user_key(const char* record);
 
   /**
    * 扫描指定范围的数据
    */
-  IndexScanner *create_scanner(const char *left_key, int left_len, bool left_inclusive,
-			       const char *right_key, int right_len, bool right_inclusive) override;
+  IndexScanner *create_scanner(const char *left_user_key, int *left_len, int left_num, bool left_inclusive,
+                          const char *right_user_key, int *right_len, int right_num, bool right_inclusive) override;
 
   RC sync() override;
 
@@ -51,8 +54,8 @@ public:
   RC next_entry(RID *rid) override;
   RC destroy() override;
 
-  RC open(const char *left_key, int left_len, bool left_inclusive,
-          const char *right_key, int right_len, bool right_inclusive);
+  RC open(const char *left_user_key, int *left_len, int left_num, bool left_inclusive,
+                          const char *right_user_key, int *right_len, int right_num, bool right_inclusive);
 private:
   BplusTreeScanner tree_scanner_;
 };

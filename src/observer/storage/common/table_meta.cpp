@@ -160,10 +160,21 @@ const IndexMeta *TableMeta::index(const char *name) const
   return nullptr;
 }
 
-const IndexMeta *TableMeta::find_index_by_field(const char *field) const
-{
+// prefix match
+const IndexMeta* TableMeta::find_index_by_field(const std::vector<std::string> &fields) const {
   for (const IndexMeta &index : indexes_) {
-    if (0 == strcmp(index.field(), field)) {
+    const std::vector<std::string>& index_fields = index.fields();
+    if (index_fields.size() < fields.size()) {
+      continue;
+    }
+    bool prefix_match = true;
+    for (int i = 0 ; i < fields.size() ; ++i) {
+      if (index_fields[i] != fields[i]) {
+        prefix_match = false;
+        break;
+      }
+    }
+    if (prefix_match) {
       return &index;
     }
   }

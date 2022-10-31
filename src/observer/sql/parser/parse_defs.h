@@ -65,6 +65,14 @@ typedef enum
   DATES,
 } AttrType;
 
+// 索引类型
+typedef enum 
+{ 
+  DEFAULT_INDEX, 
+  UNIQUE_INDEX, 
+  MULTI_INDEX, // 暂时没用
+} IndexType;
+
 //属性值
 typedef struct _Value {
   AttrType type;  // type of value
@@ -140,6 +148,11 @@ typedef struct {
   AttrInfo attributes[MAX_NUM];  // attributes
 } CreateTable;
 
+// struct of show_index
+typedef struct {
+  char *relation_name;   // Relation name
+} ShowIndex;
+
 // struct of drop_table
 typedef struct {
   char *relation_name;  // Relation name
@@ -149,7 +162,9 @@ typedef struct {
 typedef struct {
   char *index_name;      // Index name
   char *relation_name;   // Relation name
-  char *attribute_name;  // Attribute name
+  IndexType type;        // Index Type
+  size_t attr_num;
+  char *attributes[MAX_NUM];
 } CreateIndex;
 
 // struct of  drop_index
@@ -173,6 +188,7 @@ union Queries {
   Updates update;
   CreateTable create_table;
   DropTable drop_table;
+  ShowIndex show_index;
   CreateIndex create_index;
   DropIndex drop_index;
   DescTable desc_table;
@@ -192,6 +208,7 @@ enum SqlCommandFlag {
   SCF_CREATE_INDEX,
   SCF_DROP_INDEX,
   SCF_SYNC,
+  SCF_SHOW_INDEXES,
   SCF_SHOW_TABLES,
   SCF_DESC_TABLE,
   SCF_BEGIN,
@@ -214,6 +231,8 @@ extern "C" {
 
 void relation_attr_init(RelAttr *relation_attr, const char *relation_name, const char *attribute_name);
 void relation_attr_destroy(RelAttr *relation_attr);
+
+void aggregation_attr_init(RelAttr *relation_attr, const char *relation_name, const char *attribute_name, AggType aggregation_type);
 
 void set_value_init(SetValue *set_value, const char* attribute_name, Value *value);
 void copy_value(Value *dst, Value source);
@@ -259,9 +278,11 @@ void create_table_destroy(CreateTable *create_table);
 void drop_table_init(DropTable *drop_table, const char *relation_name);
 void drop_table_destroy(DropTable *drop_table);
 
-void create_index_init(
-    CreateIndex *create_index, const char *index_name, const char *relation_name, const char *attr_name);
+void create_index_init(CreateIndex *create_index, const char *index_name, const char *relation_name, IndexType type);
+void create_index_append_attribute(CreateIndex* create_index, const char* attribute_name);
 void create_index_destroy(CreateIndex *create_index);
+
+void create_show_index(ShowIndex *show_index, const char* relation_name);
 
 void drop_index_init(DropIndex *drop_index, const char *index_name);
 void drop_index_destroy(DropIndex *drop_index);
