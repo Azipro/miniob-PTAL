@@ -39,7 +39,7 @@ public:
         iter = nullptr;
       }
     }
-    speces_.clear(); 
+    speces_.clear();
     tuples_.clear();
   }
 
@@ -489,14 +489,14 @@ private:
     tuples_[0].cell_at(j, cell1);
     cell.set_type(cell1.attr_type());
     cell.set_length(cell1.length());
-    cell.set_data(cell1.data());  
-    
+    cell.set_data(cell1.data());
+
     int first_not_null = 1;
     while (cell.attr_type() == NULL_ && first_not_null < tuples_.size()) {
       tuples_[first_not_null ++].cell_at(j, cell1);
       cell.set_type(cell1.attr_type());
       cell.set_length(cell1.length());
-      cell.set_data(cell1.data()); 
+      cell.set_data(cell1.data());
     }
 
     AttrType attr_type = cell.attr_type();
