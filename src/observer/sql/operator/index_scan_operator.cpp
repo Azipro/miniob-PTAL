@@ -16,16 +16,38 @@ See the Mulan PSL v2 for more details. */
 #include "storage/index/index.h"
 
 IndexScanOperator::IndexScanOperator(const Table *table, Index *index,
-		const TupleCell *left_cell, bool left_inclusive,
-		const TupleCell *right_cell, bool right_inclusive)
+		    const char *left_user_key, bool left_inclusive,
+		    const char *right_user_key, bool right_inclusive,
+        int *attr_len, int attr_num)
   : table_(table), index_(index),
-    left_inclusive_(left_inclusive), right_inclusive_(right_inclusive)
-{
-  if (left_cell) {
-    left_cell_ = *left_cell;
+    left_inclusive_(left_inclusive), right_inclusive_(right_inclusive),
+    attr_num_(attr_num)
+{ 
+  int total_len = 0;
+  for (int i = 0 ; i < attr_num ; ++ i) {
+    attr_len_[i] = attr_len[i];
+    total_len += attr_len[i];
   }
-  if (right_cell) {
-    right_cell_ = *right_cell;
+
+  if (left_user_key) {
+    left_user_key_ = (char*)malloc(total_len);
+    memmove(left_user_key_, left_user_key, total_len);
+  }
+  if (right_user_key) {
+    right_user_key_ = (char*)malloc(total_len);
+    memmove(right_user_key_, right_user_key, total_len);
+  }
+}
+
+IndexScanOperator::~IndexScanOperator()
+{
+  if (left_user_key_) {
+    free(left_user_key_);
+    left_user_key_ = nullptr;
+  }
+  if (right_user_key_) {
+    free(right_user_key_);
+    right_user_key_ = nullptr;
   }
 }
 
@@ -36,8 +58,7 @@ RC IndexScanOperator::open()
   }
 
   
-  IndexScanner *index_scanner = index_->create_scanner(left_cell_.data(), left_cell_.length(), left_inclusive_,
-                                                       right_cell_.data(), right_cell_.length(), right_inclusive_);
+  IndexScanner *index_scanner = index_->create_scanner(left_user_key_, attr_len_, attr_num_, left_inclusive_, right_user_key_, attr_len_, attr_num_, right_inclusive_);
   if (nullptr == index_scanner) {
     LOG_WARN("failed to create index scanner");
     return RC::INTERNAL;
