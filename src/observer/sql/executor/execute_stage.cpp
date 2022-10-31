@@ -517,6 +517,39 @@ RC ExecuteStage::do_select_table(SelectStmt *select_stmt, TupleSet *&magic_table
   return rc;
 }
 
+RC ExecuteStage::do_sub_query(Db *db, Query* query, std::vector<Value> &value_list){
+  Stmt *stmt = nullptr;
+  RC rc = Stmt::create_stmt(db, *query, stmt);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create stmt. rc=%d:%s", rc, strrc(rc));
+    return rc;
+  }
+  switch (query->flag) {
+    case SCF_SELECT: {
+      SelectStmt *select_stmt = (SelectStmt *)stmt;
+      TupleSet *magic_table = nullptr;
+      RC rc = RC::SUCCESS;
+      if (select_stmt->tables().size() == 1) {
+        rc = do_select_table(select_stmt, magic_table, false);
+      } else if (select_stmt->tables().size() > 1) {
+        rc = do_select_tables(select_stmt, magic_table, true);
+      } else {
+        LOG_WARN("select less than 1 tables is not supported");
+        return RC::UNIMPLENMENT;
+        ;
+      }
+      rc = magic_table->get_set(value_list, select_stmt->query_fields());
+      return rc;
+      break;
+    }
+    default: {
+      LOG_WARN("unimplenment query");
+      rc = RC::UNIMPLENMENT;
+      return rc;
+    }
+  }
+}
+
 RC ExecuteStage::do_select_tables(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables) {
   assert(select_stmt->tables().size() > 1);
   RC rc = RC::SUCCESS;
@@ -786,7 +819,29 @@ insert into t values(1, '111', 1, 1);
 insert into t values(2, '222', 2, 2);
 select * from t;
 update t set col1 = 10;
+
+update t set col1=(select col1 from t where t.id=2) where t.id=1;
+update t set col1=(select col1 from t where t.id=2) where t.id=1;
+update t set col1=(select col1 from t where id=2) where id=1;
+update t set col1=(select col1 from t) where id=1;
 */
+
+RC  ExecuteStage::convert_value(Db *db, Value & value){
+  if(value.type != QUERY){
+    return RC::SUCCESS;
+  }else{
+    std::vector<Value> value_list;
+    do_sub_query(db, (Query *)value.data, value_list);
+    LOG_WARN("conver_value: value_list.length=%d", value_list.size());
+    if(value_list.size() != 1){
+      LOG_WARN("convert value failed, value_list.length=%d", value_list.size());
+      return RC::INVALID_ARGUMENT;
+    }else{
+      value = value_list[0];
+      return RC::SUCCESS;
+    }
+  }
+}
 
 RC ExecuteStage::do_update(SQLStageEvent *sql_event)
 {
@@ -797,6 +852,17 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
   Db *db = session_event->session()->get_current_db();
   CLogManager *clog_manager = db->get_clog_manager();
   UpdateStmt *update_stmt = (UpdateStmt *)(sql_event->stmt());
+  std::vector<SetValue> value_list = update_stmt->values_list();
+  for(int i = 0; i < value_list.size(); i++){
+    if(value_list[i].value.type == QUERY){
+      LOG_INFO("before convert value, value.type = %d", value_list[i].value.type);
+      convert_value(db, value_list[i].value);
+      LOG_INFO("after convert value, value.type = %d", value_list[i].value.type);
+    }
+  }
+  update_stmt->set_value_list(value_list);
+  const Condition* condition_list = update_stmt->conditions();
+  int condition_num = update_stmt->condition_num();
   Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt());
   if (nullptr == scan_oper) {
     scan_oper = new TableScanOperator(update_stmt->table());

@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #define MAX_NUM 20
 #define MAX_REL_NAME 20
@@ -56,6 +57,7 @@ typedef enum {
 //属性值类型
 typedef enum
 {
+  QUERY,
   UNDEFINED,
   CHARS,
   INTS,
@@ -219,6 +221,7 @@ void set_value_destory(SetValue *set_value);
 void value_init_integer(Value *value, int v);
 void value_init_float(Value *value, float v);
 void value_init_string(Value *value, const char *v);
+void value_init_query(Value *value, Query *query);
 void value_init_date(Value *value, int32_t date);
 void value_destroy(Value *value);
 

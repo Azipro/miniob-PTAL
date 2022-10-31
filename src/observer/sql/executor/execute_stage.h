@@ -19,11 +19,13 @@ See the Mulan PSL v2 for more details. */
 #include "common/seda/stage.h"
 #include "sql/parser/parse.h"
 #include "rc.h"
+#include "storage/common/db.h"
 
 class SQLStageEvent;
 class SessionEvent;
 class SelectStmt;
 class TupleSet;
+class Db;
 
 class ExecuteStage : public common::Stage {
 public:
@@ -50,6 +52,8 @@ protected:
   RC do_select(SQLStageEvent *sql_event);
   RC do_select_table(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables);
   RC do_select_tables(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables);
+  RC do_sub_query(Db *db, Query* query, std::vector<Value> &value_list);
+  RC convert_value(Db *db, Value & value);
   RC do_insert(SQLStageEvent *sql_event);
   RC do_update(SQLStageEvent *sql_event);
   RC do_delete(SQLStageEvent *sql_event);

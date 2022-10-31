@@ -56,6 +56,22 @@ RC UpdateStmt::create(Db *db, const Updates &update, Stmt *&stmt)
 
   UpdateStmt* update_stmt = new UpdateStmt(table, filter_stmt);
   update_stmt->set_value_list(value_list);
+  update_stmt->set_conditions(update.conditions, update.condition_num);
   stmt = update_stmt;
+  return rc;
+}
+
+RC UpdateStmt::update_filter(Db *db){
+  std::unordered_map<std::string, Table *> table_map;
+  table_map.insert(std::pair<std::string, Table *>(std::string(table_->name()), table_));
+
+  FilterStmt *filter_stmt = nullptr;
+  RC rc = FilterStmt::create(db, table_, &table_map,
+			     conditions_, condition_num_, filter_stmt);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
+    return rc;
+  }
+  filter_stmt_ = filter_stmt;
   return rc;
 }

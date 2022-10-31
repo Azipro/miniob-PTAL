@@ -37,14 +37,23 @@ public:
 public:
   Table *table() const {return table_;}
   std::vector<SetValue> values_list() const { return value_list_; }
-  int value_amount() const { return value_amount_; }
+  const Condition * conditions() {return conditions_;}
+  int condition_num(){return condition_num_;}
   FilterStmt *filter_stmt() const { return filter_stmt_; }
+  RC update_filter(Db *db);
   void set_value_list(const std::vector<SetValue> &value_list) { value_list_ = value_list; }
+  void set_conditions(const Condition *conditions, int condition_num) {
+    condition_num_ = condition_num;
+    for(int i = 0; i < condition_num; i++){
+      conditions_[i] = conditions[i];
+    }
+  }
 
 private:
   std::vector<SetValue> value_list_;
+  Condition conditions_[MAX_NUM];
+  int condition_num_;
   Table *table_ = nullptr;
-  int value_amount_ = 0;
   FilterStmt *filter_stmt_ = nullptr;
 };
 

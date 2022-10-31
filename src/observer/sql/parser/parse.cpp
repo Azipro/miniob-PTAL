@@ -53,7 +53,6 @@ void relation_attr_destroy(RelAttr *relation_attr)
 }
 
 void set_value_init(SetValue *set_value, const char* attribute_name, Value *value){
-  LOG_INFO("append attribute_name = %s", attribute_name);
   set_value->attribute_name = strdup(attribute_name);
   set_value->value = *value;
 }
@@ -80,6 +79,12 @@ void value_init_string(Value *value, const char *v)
 {
   value->type = CHARS;
   value->data = strdup(v);
+}
+void value_init_query(Value *value, Query *query)
+{
+  value->type = QUERY;
+  value->data = (Query *)malloc(sizeof(Query));
+  memcpy(value->data, query, sizeof(*query));
 }
 void value_init_date(Value *value, int32_t date)
 {
