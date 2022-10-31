@@ -52,6 +52,14 @@ typedef enum
   DATES,
 } AttrType;
 
+// 索引类型
+typedef enum 
+{ 
+  DEFAULT_INDEX, 
+  UNIQUE_INDEX, 
+  MULTI_INDEX
+} IndexType;
+
 //属性值
 typedef struct _Value {
   AttrType type;  // type of value
@@ -130,7 +138,9 @@ typedef struct {
 typedef struct {
   char *index_name;      // Index name
   char *relation_name;   // Relation name
-  char *attribute_name;  // Attribute name
+  IndexType type;        // Index Type
+  size_t attr_num;
+  char *attributes[MAX_NUM];
 } CreateIndex;
 
 // struct of  drop_index
@@ -235,8 +245,8 @@ void create_table_destroy(CreateTable *create_table);
 void drop_table_init(DropTable *drop_table, const char *relation_name);
 void drop_table_destroy(DropTable *drop_table);
 
-void create_index_init(
-    CreateIndex *create_index, const char *index_name, const char *relation_name, const char *attr_name);
+void create_index_init(CreateIndex *create_index, const char *index_name, const char *relation_name, IndexType type);
+void create_index_append_attribute(CreateIndex* create_index, const char* attribute_name);
 void create_index_destroy(CreateIndex *create_index);
 
 void drop_index_init(DropIndex *drop_index, const char *index_name);

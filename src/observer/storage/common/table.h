@@ -16,6 +16,9 @@ See the Mulan PSL v2 for more details. */
 #define __OBSERVER_STORAGE_COMMON_TABLE_H__
 
 #include "storage/common/table_meta.h"
+#include "storage/common/db.h"
+#include <vector>
+#include <string>
 
 struct RID;
 class Record;
@@ -69,7 +72,7 @@ public:
   RC scan_record(Trx *trx, ConditionFilter *filter, int limit, void *context,
       void (*record_reader)(const char *data, void *context));
 
-  RC create_index(Trx *trx, const char *index_name, const char *attribute_name);
+  RC create_index(Trx *trx, const char* index_name, IndexType type, const std::vector<std::string> &attrs);
 
   RC get_record_scanner(RecordFileScanner &scanner);
 
@@ -96,6 +99,8 @@ private:
       Trx *trx, ConditionFilter *filter, int limit, void *context, RC (*record_reader)(Record *record, void *context));
   RC scan_record_by_index(Trx *trx, IndexScanner *scanner, ConditionFilter *filter, int limit, void *context,
       RC (*record_reader)(Record *record, void *context));
+
+  // 不会使用这两个函数得到可以使用的索引, 转到operator里面做。
   IndexScanner *find_index_for_scan(const ConditionFilter *filter);
   IndexScanner *find_index_for_scan(const DefaultConditionFilter &filter);
   RC insert_record(Trx *trx, Record *record);
@@ -117,6 +122,7 @@ private:
 public:
   Index *find_index(const char *index_name) const;
   Index *find_index_by_field(const char *field_name) const;
+  const std::vector<Index *>& indexes() const { return indexes_; }
 
 private:
   std::string base_dir_;

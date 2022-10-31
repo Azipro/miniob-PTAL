@@ -307,7 +307,7 @@ void tuple_to_magic_tuple(Tuple *tuple, MagicTuple &magic_tuple) {
   magic_tuple.set_tuple(tmp_tuple);
 }
 
-IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt)
+IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, const Table *table) // 只支持一个表
 {
   const std::vector<FilterUnit *> &filter_units = filter_stmt->filter_units();
   if (filter_units.empty() ) {
@@ -318,105 +318,197 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt)
   // 如果是多列索引，这里的处理需要更复杂。
   // 这里的查找规则是比较简单的，就是尽量找到使用相等比较的索引
   // 如果没有就找范围比较的，但是直接排除不等比较的索引查询. (你知道为什么?)
-  const FilterUnit *better_filter = nullptr;
-  for (const FilterUnit * filter_unit : filter_units) {
-    if (filter_unit->comp() == NOT_EQUAL) {
-      continue;
-    }
+  
+  std::vector<const FilterUnit*> better_filter;
+  const FilterUnit *better_filter_single = nullptr;
+  const std::vector<Index *>& indexes = table->indexes();
+  Index *better_index = nullptr;
 
-    Expression *left = filter_unit->left();
-    Expression *right = filter_unit->right();
-    if (left->type() == ExprType::FIELD && right->type() == ExprType::VALUE) {
-    } else if (left->type() == ExprType::VALUE && right->type() == ExprType::FIELD) {
-      std::swap(left, right);
-    } else if (left->type() == ExprType::VALUE && right->type() == ExprType::VALUE) { // value comp value 直接跳过
-      continue;
+  for (const auto index : indexes) { // 优先多列索引, 再单列索引
+    const std::vector<FieldMeta>& fields_meta = index->fields_meta();
+    std::vector<const FilterUnit*> better_filter_tmp;
+
+    for (int i = 0 ; i < fields_meta.size() ; ++ i) {
+      const FieldMeta field = fields_meta[i];
+
+      for (const FilterUnit * filter_unit : filter_units) {
+
+        if (filter_unit->comp() == NOT_EQUAL) {
+          continue;
+        }
+        Expression *left = filter_unit->left();
+        Expression *right = filter_unit->right();
+        CompOp comp = filter_unit ->comp();
+        if (left->type() == ExprType::FIELD && right->type() == ExprType::VALUE) {
+        } else if (left->type() == ExprType::VALUE && right->type() == ExprType::FIELD) {
+          std::swap(left, right);
+        } else if (left->type() == ExprType::VALUE && right->type() == ExprType::VALUE) { // value comp value 直接跳过
+          continue;
+        }
+        FieldExpr &left_field_expr = *(FieldExpr *)left;
+        const Field &field_match = left_field_expr.field();
+
+        if (0 == strcmp(field.name(), field_match.field_name())) {
+          if (fields_meta.size() > 1) { // 多列索引
+            // 这里简单处理: 只有最后一个字段作比较, 前面字段都是EQUAL_TO, 才走多列索引
+            if ((i != fields_meta.size() - 1) && comp != EQUAL_TO) {
+              continue; // 尝试继续找相等
+            } else if (i != fields_meta.size() - 1) {
+              better_filter_tmp.push_back(filter_unit);
+              break;
+            } else {
+              better_filter_tmp.push_back(filter_unit);
+              break;
+            }
+          } else { // 单列索引
+            if (better_filter_single == nullptr) {
+              better_filter_single = filter_unit;
+              better_index = index;
+            } else if (comp == EQUAL_TO) {
+              better_filter_single = filter_unit;
+              better_index = index;
+            }
+          }
+        } else {
+          continue;
+        }
+      }
     }
-    FieldExpr &left_field_expr = *(FieldExpr *)left;
-    const Field &field = left_field_expr.field();
-    const Table *table = field.table();
-    Index *index = table->find_index_by_field(field.field_name());
-    if (index != nullptr) {
-      if (better_filter == nullptr) {
-        better_filter = filter_unit;
-      } else if (filter_unit->comp() == EQUAL_TO) {
-        better_filter = filter_unit;
-    	break;
+    
+    if (better_filter_tmp.size() == fields_meta.size()) { // 找到多列索引, 尽可能匹配最长的索引
+      if (better_filter.size() < better_filter_tmp.size()){
+        better_filter = better_filter_tmp;
+        better_index = index;
       }
     }
   }
+  
 
-  if (better_filter == nullptr) {
+  if (better_filter_single == nullptr && better_filter.size() == 0) {
     return nullptr;
   }
+  assert(better_index != nullptr);
 
-  Expression *left = better_filter->left();
-  Expression *right = better_filter->right();
-  CompOp comp = better_filter->comp();
-  if (left->type() == ExprType::VALUE && right->type() == ExprType::FIELD) {
-    std::swap(left, right);
-    switch (comp) {
-    case EQUAL_TO:    { comp = EQUAL_TO; }    break;
-    case LESS_EQUAL:  { comp = GREAT_THAN; }  break;
-    case NOT_EQUAL:   { comp = NOT_EQUAL; }   break;
-    case LESS_THAN:   { comp = GREAT_EQUAL; } break;
-    case GREAT_EQUAL: { comp = LESS_THAN; }   break;
-    case GREAT_THAN:  { comp = LESS_EQUAL; }  break;
-    default: {
-    	LOG_WARN("should not happen");
-    }
-    }
-  }
+  bool multi_index = (better_filter.size() == 0) ? false : true;
 
-
-  FieldExpr &left_field_expr = *(FieldExpr *)left;
-  const Field &field = left_field_expr.field();
-  const Table *table = field.table();
-  Index *index = table->find_index_by_field(field.field_name());
-  assert(index != nullptr);
-
-  ValueExpr &right_value_expr = *(ValueExpr *)right;
-  TupleCell value;
-  right_value_expr.get_tuple_cell(value);
-
-  const TupleCell *left_cell = nullptr;
-  const TupleCell *right_cell = nullptr;
+  char *user_key = nullptr;
+  char *left_user_key = nullptr;
+  char *right_user_key = nullptr;
+  int  attr_num = better_filter.size();
+  int  attr_len[MAX_NUM];
   bool left_inclusive = false;
   bool right_inclusive = false;
 
+  Expression *left;
+  Expression *right;
+  CompOp comp;
+  int user_key_offest = 0;
+  if (multi_index) {
+    // 除了最后一个都是等于关系
+    for (int i = 0 ; i < better_filter.size() ; ++ i) {
+      const FilterUnit *filter = better_filter[i];
+      left = filter->left();
+      right = filter->right();
+      comp = filter -> comp();
+      if (left->type() == ExprType::VALUE && right->type() == ExprType::FIELD) {
+        std::swap(left, right);
+        switch (comp) {
+          case EQUAL_TO:    { comp = EQUAL_TO; }    break;
+          case LESS_EQUAL:  { comp = GREAT_THAN; }  break;
+          case NOT_EQUAL:   { comp = NOT_EQUAL; }   break;
+          case LESS_THAN:   { comp = GREAT_EQUAL; } break;
+          case GREAT_EQUAL: { comp = LESS_THAN; }   break;
+          case GREAT_THAN:  { comp = LESS_EQUAL; }  break;
+          default: {
+            LOG_WARN("should not happen");
+          }
+        }
+      }
+      ValueExpr &right_value_expr = *(ValueExpr *)right;
+      TupleCell value;
+      right_value_expr.get_tuple_cell(value);
+      if (value.attr_type() == CHARS) {
+        attr_len[i] = value.length();
+      } else {
+        attr_len[i] = 4; // 其他类型固定4bytes
+      }
+    
+      char *tmp = user_key;
+      user_key = (char*)malloc(user_key_offest + attr_len[i]);
+      memmove(user_key, tmp, user_key_offest);
+      memmove(user_key + user_key_offest, value.data(), attr_len[i]);
+      if (tmp != nullptr) {
+        free(tmp);
+      }
+      user_key_offest += attr_len[i];
+    }
+  } else {
+    attr_num = 1;
+    left = better_filter_single->left();
+    right = better_filter_single->right();
+    comp = better_filter_single -> comp();
+    if (left->type() == ExprType::VALUE && right->type() == ExprType::FIELD) {
+      std::swap(left, right);
+      switch (comp) {
+        case EQUAL_TO:    { comp = EQUAL_TO; }    break;
+        case LESS_EQUAL:  { comp = GREAT_THAN; }  break;
+        case NOT_EQUAL:   { comp = NOT_EQUAL; }   break;
+        case LESS_THAN:   { comp = GREAT_EQUAL; } break;
+        case GREAT_EQUAL: { comp = LESS_THAN; }   break;
+        case GREAT_THAN:  { comp = LESS_EQUAL; }  break;
+        default: {
+          LOG_WARN("should not happen");
+        }
+      }
+    }
+
+    ValueExpr &right_value_expr = *(ValueExpr *)right;
+    TupleCell value;
+    right_value_expr.get_tuple_cell(value);
+    if (value.attr_type() == CHARS) {
+      attr_len[0] = value.length();
+    } else {
+      attr_len[0] = 4; // 其他类型固定4bytes
+    }
+    
+    user_key = (char*)malloc(attr_len[0]);
+    memmove(user_key, value.data(), attr_len[0]);
+  }
+
+
   switch (comp) {
   case EQUAL_TO: {
-    left_cell = &value;
-    right_cell = &value;
+    left_user_key = user_key;
+    right_user_key = user_key;
     left_inclusive = true;
     right_inclusive = true;
   } break;
 
   case LESS_EQUAL: {
-    left_cell = nullptr;
+    left_user_key = nullptr;
     left_inclusive = false;
-    right_cell = &value;
+    right_user_key = user_key;
     right_inclusive = true;
   } break;
 
   case LESS_THAN: {
-    left_cell = nullptr;
+    left_user_key = nullptr;
     left_inclusive = false;
-    right_cell = &value;
+    right_user_key = user_key;
     right_inclusive = false;
   } break;
 
   case GREAT_EQUAL: {
-    left_cell = &value;
+    left_user_key = user_key;
     left_inclusive = true;
-    right_cell = nullptr;
+    right_user_key = nullptr;
     right_inclusive = false;
   } break;
 
   case GREAT_THAN: {
-    left_cell = &value;
+    left_user_key = user_key;
     left_inclusive = false;
-    right_cell = nullptr;
+    right_user_key = nullptr;
     right_inclusive = false;
   } break;
 
@@ -425,10 +517,12 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt)
   } break;
   }
 
-  IndexScanOperator *oper = new IndexScanOperator(table, index,
-       left_cell, left_inclusive, right_cell, right_inclusive);
+  LOG_ERROR("user_key pointer = %p", user_key);
+  LOG_ERROR("user_key = %d", *(int*)user_key);
+  IndexScanOperator *oper = new IndexScanOperator(table, better_index,
+       left_user_key, left_inclusive, right_user_key, right_inclusive, attr_len, attr_num);
 
-  LOG_INFO("use index for scan: %s in table %s", index->index_meta().name(), table->name());
+  LOG_INFO("use index for scan: %s in table %s", better_index->index_meta().name(), table->name());
   return oper;
 }
 
@@ -465,7 +559,7 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
 RC ExecuteStage::do_select_table(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables) {
   assert(select_stmt->tables().size() == 1);
   RC rc = RC::SUCCESS;
-  Operator *scan_oper = try_to_create_index_scan_operator(select_stmt->filter_stmt());
+  Operator *scan_oper = try_to_create_index_scan_operator(select_stmt->filter_stmt(), select_stmt->tables()[0]);
   if (nullptr == scan_oper) {
     scan_oper = new TableScanOperator(select_stmt->tables()[0]);
   }
@@ -671,7 +765,11 @@ RC ExecuteStage::do_create_index(SQLStageEvent *sql_event)
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
-  RC rc = table->create_index(nullptr, create_index.index_name, create_index.attribute_name);
+  std::vector<std::string> attrs;
+  for(size_t i = 0; i < create_index.attr_num; i++) {
+    attrs.push_back(create_index.attributes[i]);
+  }
+  RC rc = table->create_index(nullptr, create_index.index_name, create_index.type, attrs);
   sql_event->session_event()->set_response(rc == RC::SUCCESS ? "SUCCESS\n" : "FAILURE\n");
   return rc;
 }
@@ -800,7 +898,7 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
   Db *db = session_event->session()->get_current_db();
   CLogManager *clog_manager = db->get_clog_manager();
   UpdateStmt *update_stmt = (UpdateStmt *)(sql_event->stmt());
-  Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt());
+  Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt(), update_stmt->table());
   if (nullptr == scan_oper) {
     scan_oper = new TableScanOperator(update_stmt->table());
   }
