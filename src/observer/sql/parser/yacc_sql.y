@@ -151,6 +151,7 @@ command:
 	| create_table
 	| drop_table
 	| show_tables
+	| show_indexes
 	| desc_table
 	| create_index	
 	| drop_index
@@ -208,7 +209,12 @@ show_tables:
       CONTEXT->ssql->flag = SCF_SHOW_TABLES;
     }
     ;
-
+show_indexes:
+	SHOW INDEX FROM ID SEMICOLON {
+	  CONTEXT->ssql->flag = SCF_SHOW_INDEXES;
+	  create_show_index(&CONTEXT->ssql->sstr.show_index, $4);
+	}	
+	;
 desc_table:
     DESC ID SEMICOLON {
       CONTEXT->ssql->flag = SCF_DESC_TABLE;
@@ -223,7 +229,7 @@ create_index:		/*create index 语句的语法解析树*/
 			create_index_append_attribute(&CONTEXT->ssql->sstr.create_index, $7);
 			create_index_init(&CONTEXT->ssql->sstr.create_index, $3, $5, DEFAULT_INDEX);
 		}
-	| CREATE UNIQUE INDEX ID ON ID LBRACE ID RBRACE SEMICOLON
+	| CREATE UNIQUE INDEX ID ON ID LBRACE ID index_attr_list RBRACE SEMICOLON
         {
 			CONTEXT->ssql->flag = SCF_CREATE_INDEX;//"create_index";
             create_index_append_attribute(&CONTEXT->ssql->sstr.create_index, $8);

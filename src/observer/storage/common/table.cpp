@@ -273,11 +273,12 @@ RC Table::insert_record(Trx *trx, Record *record)
   if (trx != nullptr) {
     rc = trx->insert_record(this, record);
     if (rc != RC::SUCCESS) {
+      LOG_ERROR("insert failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
       LOG_ERROR("Failed to log operation(insertion) to trx");
 
       RC rc2 = record_handler_->delete_record(&record->rid());
       if (rc2 != RC::SUCCESS) {
-        LOG_ERROR("Failed to rollback record data when insert index entries failed. table name=%s, rc=%d:%s",
+        LOG_ERROR("Failed to rollback record data when trx insert failed. table name=%s, rc=%d:%s",
             name(),
             rc2,
             strrc(rc2));
@@ -287,6 +288,11 @@ RC Table::insert_record(Trx *trx, Record *record)
   }
 
   rc = insert_entry_of_indexes(record->data(), record->rid());
+  // if (rc == RC::RECORD_DUPLICATE_KEY) {
+  //   record_handler_->delete_record(&record->rid());
+  //   LOG_WARN("key is exist.");
+  //   return rc;
+  // }
   if (rc != RC::SUCCESS) {
     RC rc2 = delete_entry_of_indexes(record->data(), record->rid(), true);
     if (rc2 != RC::SUCCESS) {
@@ -301,6 +307,16 @@ RC Table::insert_record(Trx *trx, Record *record)
           name(),
           rc2,
           strrc(rc2));
+    }
+
+    // 插入索引失败之后, 不仅要删table里面的记录, 事务里面的记录也要删, 不然同一个事务里面, 下次insert会使用同一个可用rid, 会导致事务执行失败
+    if (trx != nullptr) {
+      rc2 = trx->delete_record(this, record);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("delete failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
+        LOG_ERROR("Failed to log operation(deletion) to trx");
+        return rc;
+      }
     }
     return rc;
   }
@@ -318,6 +334,8 @@ RC Table::insert_record(Trx *trx, Record *record)
       return rc;
     }
   }
+
+  LOG_INFO("insert record success. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
   return rc;
 }
 
@@ -611,7 +629,7 @@ RC Table::create_index(Trx *trx, const char* index_name, IndexType type, const s
   }
 
   IndexMeta new_index_meta;
-  RC rc = new_index_meta.init(index_name, fields_meta);
+  RC rc = new_index_meta.init(index_name, fields_meta, type);
   if (rc != RC::SUCCESS) {
     LOG_INFO("Failed to init IndexMeta in table:%s, index_name:%s", name(), index_name);
     return rc;
@@ -709,21 +727,15 @@ static RC record_reader_update_adapter(Record *record, void *context)
 RC Table::update_record(Trx *trx, Record *record, const Value *value, const char *attribute_name)
 {
   RC rc = RC::SUCCESS;
-  // TODO: 是否需要更新索引？
-  // rc = update_entry_of_indexes(record->data(), record->rid(), false); 
-  // if (rc != RC::SUCCESS) {
-  //   LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
-  //               record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
-  //   return rc;
-  // } 
   const FieldMeta *field = table_meta_.field(attribute_name);
   // 属性不存在
   if(field == nullptr){
     LOG_WARN("Failed to update record: attribute [%s] does not exist", attribute_name);
     return RC::INVALID_ARGUMENT;
   }
-  int32_t date = -1;
+  
   if(value->type == CHARS && field->type() == DATES){
+    int32_t date = -1;
     rc = string_to_date((char *)value->data, date);
     if(rc != RC::SUCCESS){
       LOG_WARN("Failed to convert chars to date");
@@ -744,28 +756,88 @@ RC Table::update_record(Trx *trx, Record *record, const Value *value, const char
       copy_len = data_len + 1;
     }
   }
-  memcpy(record->data() + field->offset(), value->data, copy_len);
+
+  int total_key_len = 0;
+  for (auto field : *(table_meta_.field_metas())) {
+    total_key_len += field.len();
+  }
+
+  Record old_record;
+  char *data = (char*)malloc(total_key_len);
+  memcpy(data, record->data(), total_key_len);
+  old_record.set_data(data);
+  old_record.set_rid(RID(record->rid().page_num, record->rid().slot_num));
+
+  memcpy(record->data() + field->offset(), value->data, copy_len);  // 其实在这里就已经完成更新了
+
   rc = record_handler_->update_record(record);
   if (rc != RC::SUCCESS) {
     LOG_ERROR("Failed to update record (rid=%d.%d). rc=%d:%s",
                 record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
     return rc;
   }
+  
+  if (trx != nullptr) {
+    rc = trx->update_record(this, record);
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("update failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
+      LOG_ERROR("Failed to log operation(updation) to trx");
+
+      RC rc2 = record_handler_->update_record(&old_record);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback record data when trx update failed. table name=%s, rc=%d:%s",
+            name(),
+            rc2,
+            strrc(rc2));
+      }
+      free(data);
+      return rc;
+    }
+  }
+
+  rc = update_entry_of_indexes(record->data(), record->rid(), old_record.data());
+  if (rc != RC::SUCCESS) {
+    RC rc2 = update_entry_of_indexes(old_record.data(), old_record.rid(), record->data()); // update index back   record->old_record
+    if (rc2 != RC::SUCCESS) {
+      LOG_ERROR("Failed to rollback index data when update index entries failed. table name=%s, rc=%d:%s",
+          name(),
+          rc2,
+          strrc(rc2));
+    }
+    rc2 = record_handler_->update_record(&old_record); // update record back
+    if (rc2 != RC::SUCCESS) {
+      LOG_PANIC("Failed to rollback record data when update index entries failed. table name=%s, rc=%d:%s",
+          name(),
+          rc2,
+          strrc(rc2));
+    }
+
+    if (trx != nullptr) {
+      rc2 = trx->update_record(this, record); // insert rollback是delete, update rollback是update回原值。 这里直接删除trx的这次操作会不会更好?
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("update failed. page_num: %d, slot_num: %d", record->rid().page_num, record->rid().slot_num);
+        LOG_ERROR("Failed to log operation(updation) to trx");
+        free(data);
+        return rc;
+      }
+    }
+    free(data);
+    return rc;
+  }
 
   // if (trx != nullptr) {
-  //   rc = trx->update_record(this, record);
-    
   //   CLogRecord *clog_record = nullptr;
-  //   rc = clog_manager_->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record, name(), 0, record);
+  //   rc = clog_manager_->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record, name(), table_meta_.record_size(), record);
   //   if (rc != RC::SUCCESS) {
   //     LOG_ERROR("Failed to create a clog record. rc=%d:%s", rc, strrc(rc));
   //     return rc;
   //   }
-  //   rc = clog_manager_->clog_append_record(clog_record);
+  //   rc = clog_manager_->clog_append_record(clog_record); // LOGBUF_FULL
   //   if (rc != RC::SUCCESS) {
   //     return rc;
   //   }
   // }
+  LOG_INFO("rc = %s", strrc(rc));
   return rc;
 }
 
@@ -830,7 +902,7 @@ RC Table::delete_record(Trx *trx, ConditionFilter *filter, int *deleted_count)
 RC Table::delete_record(Trx *trx, Record *record)
 {
   RC rc = RC::SUCCESS;
-  
+  // 这段代码表明此record一定存在
   rc = delete_entry_of_indexes(record->data(), record->rid(), false);  // 重复代码 refer to commit_delete
   if (rc != RC::SUCCESS) {
     LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
@@ -910,6 +982,18 @@ RC Table::insert_entry_of_indexes(const char *record, const RID &rid)
   RC rc = RC::SUCCESS;
   for (Index *index : indexes_) {
     rc = index->insert_entry(record, &rid);
+    if (rc != RC::SUCCESS) {
+      break;
+    }
+  }
+  return rc;
+}
+
+RC Table::update_entry_of_indexes(const char *record, const RID &rid, const char *old_record)
+{
+  RC rc = RC::SUCCESS;
+  for (Index *index : indexes_) {
+    rc = index->update_entry(record, &rid, old_record);
     if (rc != RC::SUCCESS) {
       break;
     }

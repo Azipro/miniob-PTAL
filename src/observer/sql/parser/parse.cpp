@@ -275,6 +275,10 @@ void drop_table_destroy(DropTable *drop_table)
   drop_table->relation_name = nullptr;
 }
 
+void create_show_index(ShowIndex *show_index, const char* relation_name) {
+  show_index->relation_name = strdup(relation_name);
+}
+
 void create_index_init(CreateIndex *create_index, const char *index_name, 
                        const char *relation_name, IndexType type) {
   create_index->index_name = strdup(index_name);

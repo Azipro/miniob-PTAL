@@ -54,6 +54,7 @@ public:
       switch (attr_type_[i]) {
         case INTS: case DATES: {
           result = compare_int((void *)(v1 + offset), (void *)(v2 + offset));
+          // LOG_ERROR("v1 = %d   v2 = %d , result = %d", *(int*)(v1 + offset), *(int*)(v2 + offset), result);
         }
           break;
         case FLOATS: {
@@ -72,6 +73,7 @@ public:
       if (result != 0) return result;
       offset += attr_length_each_[i];
     }
+    return 0;
   }
 private:
   AttrType attr_type_[MAX_NUM];
@@ -100,6 +102,7 @@ public:
 
     const RID *rid1 = (const RID *)(v1 + attr_comparator_.attr_length());
     const RID *rid2 = (const RID *)(v2 + attr_comparator_.attr_length());
+    // LOG_ERROR("RID::compare(rid1, rid2) = %d", RID::compare(rid1, rid2));
     return RID::compare(rid1, rid2);
   }
 
@@ -129,7 +132,7 @@ public:
     int offset = 0;
     for (int i = 0 ; i < attr_num_ ; ++ i) {
       switch (attr_type_[i]) {
-        case INTS: {
+        case INTS: case DATES: {
           result += std::to_string(*(int*)(v + offset));
         }
           break;
@@ -439,6 +442,8 @@ public:
    * @note 这里假设user_key的内存大小与attr_length 一致
    */
   RC insert_entry(const char *user_key, const RID *rid);
+
+  RC update_entry(const char *user_key, const RID *rid, const char *user_key_old);
 
   /**
    * 从IndexHandle句柄对应的索引中删除一个值为（*pData，rid）的索引项

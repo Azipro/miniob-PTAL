@@ -20,7 +20,7 @@ CREATE INDEX i_2_456 ON multi_index2(col4, col5, col6);
 
 -- echo 3. influence of inserting
 CREATE TABLE multi_index3(id int, col1 int, col2 float, col3 char, col4 date, col5 int, col6 int);
-CREATE INDEX i_3_i1 ON multi_index3(id,col1);
+CREATE UNIQUE INDEX i_3_i1 ON multi_index3(id,col1);
 
 INSERT INTO multi_index3 VALUES (1, 1, 11.2, 'a', '2021-01-02', 1, 1);
 INSERT INTO multi_index3 VALUES (1, 1, 11.2, 'a', '2021-01-02', 1, 1);

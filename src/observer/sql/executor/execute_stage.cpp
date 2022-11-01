@@ -169,6 +169,9 @@ void ExecuteStage::handle_request(common::StageEvent *event)
     case SCF_SHOW_TABLES: {
       do_show_tables(sql_event);
     } break;
+    case SCF_SHOW_INDEXES: {
+      do_show_index(sql_event);
+    } break;
     case SCF_DESC_TABLE: {
       do_desc_table(sql_event);
     } break;
@@ -323,6 +326,8 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
   const FilterUnit *better_filter_single = nullptr;
   const std::vector<Index *>& indexes = table->indexes();
   Index *better_index = nullptr;
+  Index *better_index_single = nullptr;
+  Index *better_index_multi = nullptr;
 
   for (const auto index : indexes) { // 优先多列索引, 再单列索引
     const std::vector<FieldMeta>& fields_meta = index->fields_meta();
@@ -363,10 +368,10 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
           } else { // 单列索引
             if (better_filter_single == nullptr) {
               better_filter_single = filter_unit;
-              better_index = index;
+              better_index_single = index;
             } else if (comp == EQUAL_TO) {
               better_filter_single = filter_unit;
-              better_index = index;
+              better_index_single = index;
             }
           }
         } else {
@@ -378,7 +383,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
     if (better_filter_tmp.size() == fields_meta.size()) { // 找到多列索引, 尽可能匹配最长的索引
       if (better_filter.size() < better_filter_tmp.size()){
         better_filter = better_filter_tmp;
-        better_index = index;
+        better_index_multi = index;
       }
     }
   }
@@ -387,9 +392,14 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
   if (better_filter_single == nullptr && better_filter.size() == 0) {
     return nullptr;
   }
-  assert(better_index != nullptr);
 
   bool multi_index = (better_filter.size() == 0) ? false : true;
+
+  if (multi_index) {
+    better_index = better_index_multi;
+  } else {
+    better_index = better_index_single;
+  }
 
   char *user_key = nullptr;
   char *left_user_key = nullptr;
@@ -443,6 +453,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
       user_key_offest += attr_len[i];
     }
   } else {
+    attr_num = 1;
     left = better_filter_single->left();
     right = better_filter_single->right();
     comp = better_filter_single -> comp();
@@ -516,6 +527,8 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
   } break;
   }
 
+  // LOG_INFO("user_key pointer = %p", user_key);
+  // LOG_INFO("user_key = %d", *(int*)user_key);
   IndexScanOperator *oper = new IndexScanOperator(table, better_index,
        left_user_key, left_inclusive, right_user_key, right_inclusive, attr_len, attr_num);
 
@@ -789,6 +802,35 @@ RC ExecuteStage::do_show_tables(SQLStageEvent *sql_event)
   return RC::SUCCESS;
 }
 
+RC ExecuteStage::do_show_index(SQLStageEvent *sql_event)
+{
+  SessionEvent *session_event = sql_event->session_event();
+  Db *db = session_event->session()->get_current_db();
+  const ShowIndex &show_index = sql_event->query()->sstr.show_index;
+  Table *table = db->find_table(show_index.relation_name);
+  if (table == nullptr) {
+    session_event->set_response("FAILURE\n");
+    return RC::SUCCESS;
+  }
+  std::vector<Index*> indexes = table->indexes();
+  
+  std::stringstream ss;
+  ss << "Table|Non_unique|Key_name|Seq_in_index|Column_name\n";
+  LOG_INFO("table %s has %d indexes.", table->name(), indexes.size());
+  for (auto index : indexes) {
+    const std::vector<FieldMeta> fields = index->fields_meta();
+    LOG_INFO("index %s has %d fields.", index->index_meta().name(), fields.size());
+    for (int i = 0 ; i < fields.size() ; ++ i) {
+      int non_unique = index->index_meta().type() == UNIQUE_INDEX ? 0 : 1;
+      ss << table->name() << "|" << non_unique << "|" << index->index_meta().name() << "|" << i + 1 << "|" << fields[i].name() << "\n";
+    }
+  }
+
+  session_event->set_response(ss.str().c_str());
+
+  return RC::SUCCESS;
+}
+
 RC ExecuteStage::do_desc_table(SQLStageEvent *sql_event)
 {
   Query *query = sql_event->query();
@@ -874,20 +916,6 @@ UPDATE Update_table_1 SET T_NAME='N02' WHERE COL1=0 AND COL2=0;
 
 RC ExecuteStage::do_update(SQLStageEvent *sql_event)
 {
-  // SessionEvent *session_event = sql_event->session_event();
-  // const Updates &update = sql_event ->query()->sstr.update;
-  // Db *db = session_event->session()->get_current_db();
-  // Session *session = session_event->session();
-  // Trx *trx = session->current_trx();
-  // CLogManager *clog_manager = db->get_clog_manager();
-  // // 不支持事务
-  // RC rc = db->update(update.relation_name, trx, update.attribute_name, &update.value, update.condition_num, update.conditions, -1);
-  // if (rc == RC::SUCCESS) {
-  //   session_event->set_response("SUCCESS\n");
-  // } else {
-  //   session_event->set_response("FAILURE\n");
-  // }
-  // redo
   RC rc = RC::SUCCESS;
   SessionEvent *session_event = sql_event->session_event();
   Session *session = session_event->session();
@@ -895,11 +923,12 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
   Db *db = session_event->session()->get_current_db();
   CLogManager *clog_manager = db->get_clog_manager();
   UpdateStmt *update_stmt = (UpdateStmt *)(sql_event->stmt());
-  Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt(), update_stmt->table());
-  if (nullptr == scan_oper) {
-    scan_oper = new TableScanOperator(update_stmt->table());
-  }
-
+  // Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt(), update_stmt->table());
+  // if (nullptr == scan_oper) {
+  //   scan_oper = new TableScanOperator(update_stmt->table());
+  // }
+  // 不走索引, 因为更新索引entry的时候偷懒直接删除再插入, 扫描走索引可能会有bug
+  Operator *scan_oper = new TableScanOperator(update_stmt->table());
   DEFER([&] () {delete scan_oper;});
 
   PredicateOperator pred_oper(update_stmt->filter_stmt());
@@ -912,7 +941,6 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
     session_event->set_response("FAILURE\n");
   } else {
     session_event->set_response("SUCCESS\n");
-    // trx和clog未处理
     // if (!session->is_trx_multi_operation_mode()) {
     //   CLogRecord *clog_record = nullptr;
     //   rc = clog_manager->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record);

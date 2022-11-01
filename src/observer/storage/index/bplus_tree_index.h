@@ -28,6 +28,7 @@ public:
   RC close();
 
   RC insert_entry(const char *record, const RID *rid) override;
+  RC update_entry(const char *record, const RID *rid, const char *old_record) override;
   RC delete_entry(const char *record, const RID *rid) override;
 
   char* construct_user_key(const char* record);

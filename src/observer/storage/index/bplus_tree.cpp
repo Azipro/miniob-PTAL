@@ -1396,15 +1396,18 @@ RC BplusTreeHandler::insert_entry(const char *user_key, const RID *rid)
     return RC::INVALID_ARGUMENT;
   }
 
-  if(is_unique_) {
+  if(is_unique_) { // 表中已有重复key, 暂不做处理
     std::list<RID> tmp;
-    if(get_entry(user_key, file_header_.attr_length, tmp) == RC::SUCCESS) {
-      LOG_INFO("insert_entry into unique index, but user_key is exist. user_key is %s", user_key);
-      return RC::GENERIC_ERROR;
+    get_entry(user_key, file_header_.attr_length, tmp);
+    if(tmp.size() > 0) {
+      LOG_INFO("insert_entry into unique index, but user_key is exist.");
+      return RC::RECORD_DUPLICATE_KEY;
     }
   }
 
   char *key = make_key(user_key, *rid);
+  LOG_INFO("make insert key success.");
+
   if (key == nullptr) {
     LOG_WARN("Failed to alloc memory for key.");
     return RC::NOMEM;
@@ -1435,7 +1438,42 @@ RC BplusTreeHandler::insert_entry(const char *user_key, const RID *rid)
 
   mem_pool_item_->free(key);
   LOG_TRACE("insert entry success");
+
+  print_tree();
   // disk_buffer_pool_->check_all_pages_unpinned(file_id_);
+  return RC::SUCCESS;
+}
+
+RC BplusTreeHandler::update_entry(const char *user_key, const RID *rid, const char *user_key_old)
+{
+  if (user_key == nullptr || rid == nullptr) {
+    LOG_WARN("Invalid arguments, key is empty or rid is empty");
+    return RC::INVALID_ARGUMENT;
+  }
+
+  if(is_unique_) {
+    std::list<RID> tmp;
+    get_entry(user_key, file_header_.attr_length, tmp);
+    if(tmp.size() > 0) { // 更新之后的值已经存在
+      LOG_INFO("insert_entry into unique index, but user_key is exist.");
+      return RC::RECORD_DUPLICATE_KEY;
+    }
+  }
+
+  // 偷懒^ ^
+  RC rc = RC::SUCCESS;
+  rc = delete_entry(user_key_old, rid);
+  if (rc != RC::SUCCESS && rc != RC::RECORD_RECORD_NOT_EXIST) { // 理论上来说, 删索引的entry时, 该record一定是存在的。 但由于没有处理创建索引前就有重复数据的情况, 可能会找不到entry
+    LOG_WARN("updating: delete entry faild.");
+    return rc;
+  }
+
+  rc = insert_entry(user_key, rid);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("updating: insert entry faild.");
+    return rc;
+  }
+
   return RC::SUCCESS;
 }
 
@@ -1727,16 +1765,23 @@ RC BplusTreeScanner::open(const char *left_user_key, int *left_len, int left_num
     return RC::INTERNAL;
   }
 
+  LOG_INFO("BplusTreeScanner::open begin.");
+
   inited_ = true;
+
+  LOG_INFO("%s", left_user_key == nullptr ? "left_user_key is nullptr" : "left_user_key is not nullptr");
+  LOG_INFO("%s", right_user_key == nullptr ? "right_user_key is nullptr" : "right_user_key is not nullptr");
   
   // 校验输入的键值是否是合法范围
   if (left_user_key && right_user_key) {
     const auto &attr_comparator = tree_handler_.key_comparator_.attr_comparator();
     const int result = attr_comparator(left_user_key, right_user_key);
+    LOG_INFO("result = %d", result);
     if (result > 0 || // left < right
          // left == right but is (left,right)/[left,right) or (left,right]
 	     (result == 0 && (left_inclusive == false || right_inclusive == false))) { 
-      return RC::INVALID_ARGUMENT; // TODO  open失败， 看起来是comparator失败了
+        LOG_ERROR("left < right || left == right but is (left,right)/[left,right) or (left,right]");
+      return RC::INVALID_ARGUMENT;
     }
   }
 
@@ -1800,6 +1845,11 @@ RC BplusTreeScanner::open(const char *left_user_key, int *left_len, int left_num
       left_key = tree_handler_.make_key(fixed_left_key, *RID::max());
     }
 
+    if (fixed_left_key != left_user_key) {
+      delete[] fixed_left_key;
+      fixed_left_key = nullptr;
+    }
+
     rc = tree_handler_.find_leaf(left_key, left_frame_);
 
     if (rc != RC::SUCCESS) {
@@ -1814,6 +1864,7 @@ RC BplusTreeScanner::open(const char *left_user_key, int *left_len, int left_num
     if (left_index >= left_node.size()) { // 超出了当前页，就需要向后移动一个位置
       const PageNum next_page_num = left_node.next_page();
       if (next_page_num == BP_INVALID_PAGE_NUM) { // 这里已经是最后一页，说明当前扫描，没有数据
+        LOG_WARN("last page %d, no data.", next_page_num);
 	      return RC::SUCCESS;
       }
 
@@ -1914,6 +1965,7 @@ RC BplusTreeScanner::open(const char *left_user_key, int *left_len, int left_num
       const PageNum prev_page_num = right_node.prev_page();
       if (prev_page_num == BP_INVALID_PAGE_NUM) {
         end_index_ = -1;
+        LOG_WARN("prev_page_num == BP_INVALID_PAGE_NUM", prev_page_num);
         return RC::SUCCESS;
       }
 
@@ -1943,6 +1995,7 @@ RC BplusTreeScanner::open(const char *left_user_key, int *left_len, int left_num
       end_index_ = -1;
     }
   }
+  LOG_INFO("BplusTreeScanner open success.");
   return RC::SUCCESS;
 }
 

@@ -48,6 +48,7 @@ public:
   }
 
   virtual RC insert_entry(const char *record, const RID *rid) = 0;
+  virtual RC update_entry(const char *record, const RID *rid, const char *old_record) = 0;
   virtual RC delete_entry(const char *record, const RID *rid) = 0;
 
   virtual IndexScanner *create_scanner(const char *left_user_key, int *left_len, int left_num, bool left_inclusive,

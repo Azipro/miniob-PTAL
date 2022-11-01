@@ -144,24 +144,24 @@ RC BplusTreeIndex::delete_entry(const char *record, const RID *rid) {
   return rc;
 }
 
-// RC BplusTreeIndex::update_entry(const char *record, const RID *rid, const char *old_record) {
-//   int key_len = 0;
-//   for(FieldMeta field : fields_meta_) {
-//     key_len += field.len();
-//   }
-//   char* new_user_key = construct_user_key(record);
-//   char* old_user_key = construct_user_key(old_record);
-//   if (0 == strncmp(new_user_key, old_user_key, key_len)){ // 相等, 无需操作
-//     free(new_user_key);
-//     free(old_user_key);
-//     return RC::SUCCESS;
-//   }
+RC BplusTreeIndex::update_entry(const char *record, const RID *rid, const char *old_record) {
+  int key_len = 0;
+  for(FieldMeta field : fields_meta_) {
+    key_len += field.len();
+  }
+  char* new_user_key = construct_user_key(record);
+  char* old_user_key = construct_user_key(old_record);
+  if (0 == strncmp(new_user_key, old_user_key, key_len)){ // 相等, 无需操作
+    free(new_user_key);
+    free(old_user_key);
+    return RC::SUCCESS;
+  }
 
-//   RC rc = index_handler_.update_entry(new_user_key, rid, old_user_key);
-//   free(new_user_key);
-//   free(old_user_key);
-//   return rc;
-// }
+  RC rc = index_handler_.update_entry(new_user_key, rid, old_user_key);
+  free(new_user_key);
+  free(old_user_key);
+  return rc;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 BplusTreeIndexScanner::BplusTreeIndexScanner(BplusTreeHandler &tree_handler) : tree_scanner_(tree_handler)

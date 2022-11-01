@@ -31,11 +31,23 @@ IndexScanOperator::IndexScanOperator(const Table *table, Index *index,
 
   if (left_user_key) {
     left_user_key_ = (char*)malloc(total_len);
-    memmove(left_user_key_, left_user_key, total_len);
+    memcpy(left_user_key_, left_user_key, total_len);    
+
+    // LOG_INFO("left_user_key_ =  %d", *(int*)left_user_key_);
+    // LOG_INFO("left_user_key =  %d", *(int*)left_user_key);
+    // LOG_INFO("left_user_key pointer = %p", left_user_key);
+  } else {
+    left_user_key_ = nullptr;
   }
+  
   if (right_user_key) {
     right_user_key_ = (char*)malloc(total_len);
-    memmove(right_user_key_, right_user_key, total_len);
+    memcpy(right_user_key_, right_user_key, total_len);
+    // LOG_INFO("right_user_key_ =  %d", *(int*)right_user_key_);
+    // LOG_INFO("right_user_key =  %d", *(int*)right_user_key);
+    // LOG_INFO("right_user_key pointer = %p", right_user_key);
+  } else {
+    right_user_key_ = nullptr;
   }
 }
 

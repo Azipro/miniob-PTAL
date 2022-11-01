@@ -57,7 +57,7 @@ typedef enum
 { 
   DEFAULT_INDEX, 
   UNIQUE_INDEX, 
-  MULTI_INDEX
+  MULTI_INDEX, // 暂时没用
 } IndexType;
 
 //属性值
@@ -131,8 +131,13 @@ typedef struct {
 
 // struct of drop_table
 typedef struct {
-  char *relation_name;  // Relation name
+  char *relation_name;  // Relation nameShowIndex
 } DropTable;
+
+// struct of show_index
+typedef struct {
+  char *relation_name;   // Relation name
+} ShowIndex;
 
 // struct of create_index
 typedef struct {
@@ -164,6 +169,7 @@ union Queries {
   Updates update;
   CreateTable create_table;
   DropTable drop_table;
+  ShowIndex show_index;
   CreateIndex create_index;
   DropIndex drop_index;
   DescTable desc_table;
@@ -184,6 +190,7 @@ enum SqlCommandFlag {
   SCF_DROP_INDEX,
   SCF_SYNC,
   SCF_SHOW_TABLES,
+  SCF_SHOW_INDEXES,
   SCF_DESC_TABLE,
   SCF_BEGIN,
   SCF_COMMIT,
@@ -244,6 +251,8 @@ void create_table_destroy(CreateTable *create_table);
 
 void drop_table_init(DropTable *drop_table, const char *relation_name);
 void drop_table_destroy(DropTable *drop_table);
+
+void create_show_index(ShowIndex *show_index, const char* relation_name);
 
 void create_index_init(CreateIndex *create_index, const char *index_name, const char *relation_name, IndexType type);
 void create_index_append_attribute(CreateIndex* create_index, const char* attribute_name);
