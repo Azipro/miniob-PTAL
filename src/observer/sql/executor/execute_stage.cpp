@@ -896,7 +896,11 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
     }
   }
   update_stmt->set_conditions(condition_list, condition_num);
-  update_stmt->update_filter(db);
+  rc = update_stmt->update_filter(db);
+  if(rc != RC::SUCCESS){
+    session_event->set_response("FAILURE\n");
+    return rc;
+  }
   Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt());
   if (nullptr == scan_oper) {
     scan_oper = new TableScanOperator(update_stmt->table());
