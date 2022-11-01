@@ -41,13 +41,22 @@ RC UpdateStmt::create(Db *db, const Updates &update, Stmt *&stmt)
 
   std::unordered_map<std::string, Table *> table_map;
   table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
+  //printf("debug info, update==NULL?%d\n", update == NULL);
+  // Condition c = update.conditions[0];
+  // printf("debug info, condition[0], left_attr:%s\n", c.left_attr.attribute_name);
+  // printf("debug info, condition[0], right_attr:%s\n", c.right_attr.attribute_name);
+  // for(int i = 0; i < update.condition_num; i++){
+  //   printf("debug info, condition[%d], left_attr:%s, right_attr:%s\n", i, update.conditions[i].left_attr.attribute_name, update.conditions[i].right_attr.attribute_name);
+  // }
 
   FilterStmt *filter_stmt = nullptr;
   RC rc = FilterStmt::create(db, table, &table_map,
 			     update.conditions, update.condition_num, filter_stmt);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
-    return rc;
+    rc = RC::SUCCESS;
+    // 不返回错误，后续可能会对conditon做转化
+    //return rc;
   }
   std::vector<SetValue> value_list(update.update_num);
   for(int i = update.update_num-1; i >= 0; i--){

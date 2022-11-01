@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "rc.h"
 #include "sql/stmt/stmt.h"
 #include <vector>
+#include "common/log/log.h"
 
 class FieldMeta;
 class FilterStmt;
@@ -37,7 +38,12 @@ public:
 public:
   Table *table() const {return table_;}
   std::vector<SetValue> values_list() const { return value_list_; }
-  const Condition * conditions() {return conditions_;}
+  void conditions(Condition *conditions) {
+    for(int i = 0; i < condition_num_; i++){
+      LOG_INFO("UpdateStmt: condition-%d, left_attr:%s, right_attr:%s", i, conditions_[i].left_attr.attribute_name, conditions_[i].right_attr.attribute_name);
+      conditions[i] = conditions_[i];
+    }
+  }
   int condition_num(){return condition_num_;}
   FilterStmt *filter_stmt() const { return filter_stmt_; }
   RC update_filter(Db *db);

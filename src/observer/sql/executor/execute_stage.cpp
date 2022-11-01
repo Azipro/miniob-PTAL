@@ -538,7 +538,15 @@ RC ExecuteStage::do_sub_query(Db *db, Query* query, std::vector<Value> &value_li
         return RC::UNIMPLENMENT;
         ;
       }
-      rc = magic_table->get_set(value_list, select_stmt->query_fields());
+      if (select_stmt->agg_num() > 0) {
+        rc = magic_table->get_agg_set(value_list, select_stmt->query_fields());
+      } else {
+        rc = magic_table->get_set(value_list, select_stmt->query_fields());
+      }
+      if (rc != RC::SUCCESS) {
+        return rc;
+      }
+      delete magic_table;
       return rc;
       break;
     }
@@ -819,11 +827,18 @@ insert into t values(1, '111', 1, 1);
 insert into t values(2, '222', 2, 2);
 select * from t;
 update t set col1 = 10;
+update t set col1 = 10, col2 = 20;
 
 update t set col1=(select col1 from t where t.id=2) where t.id=1;
 update t set col1=(select col1 from t where t.id=2) where t.id=1;
 update t set col1=(select col1 from t where id=2) where id=1;
 update t set col1=(select col1 from t) where id=1;
+update t set col2=(select count(id) from t) where id=1;
+update t set col2=(select max(id) from t) where id=1;
+update t set col1 = 1 where id=(select count(id) from t);
+update t set col1=(select count(id) from t), col2=(select count(id) from t) where id=1;
+update t set col1=(select count(id) from t), col2=(select max(id) from t) where id=1;
+update t set  col1=(select count(id) from t), col2=(select max(id) from t) where id=(select min(id) from t);
 */
 
 RC  ExecuteStage::convert_value(Db *db, Value & value){
@@ -853,6 +868,7 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
   CLogManager *clog_manager = db->get_clog_manager();
   UpdateStmt *update_stmt = (UpdateStmt *)(sql_event->stmt());
   std::vector<SetValue> value_list = update_stmt->values_list();
+  LOG_INFO("-----convert set value-----");
   for(int i = 0; i < value_list.size(); i++){
     if(value_list[i].value.type == QUERY){
       LOG_INFO("before convert value, value.type = %d", value_list[i].value.type);
@@ -860,9 +876,27 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
       LOG_INFO("after convert value, value.type = %d", value_list[i].value.type);
     }
   }
+  LOG_INFO("-----convert condition-----");
   update_stmt->set_value_list(value_list);
-  const Condition* condition_list = update_stmt->conditions();
+  Condition condition_list[MAX_NUM];
+  update_stmt->conditions(condition_list);
   int condition_num = update_stmt->condition_num();
+  LOG_INFO("condition_num=%d", condition_num);
+  for(int i = 0; i < condition_num; i++){
+    LOG_INFO("conditon-%d: left_attr:%s, rigth_attr:%s, left_is_attr:%d", i, condition_list[i].left_attr.attribute_name, condition_list[i].right_attr.attribute_name, condition_list[i].left_is_attr);
+    if(condition_list[i].left_value.type == QUERY && condition_list[i].left_is_attr != 1){
+      LOG_INFO("before convert left value, value.type = %d", condition_list[i].left_value.type);
+      convert_value(db, condition_list[i].left_value);
+      LOG_INFO("after convert left value, value.type = %d", condition_list[i].left_value.type);
+    }
+    if(condition_list[i].right_value.type == QUERY && condition_list[i].right_is_attr != 1){
+      LOG_INFO("before convert right value, value.type = %d", condition_list[i].right_value.type);
+      convert_value(db, condition_list[i].right_value);
+      LOG_INFO("after convert right value, value.type = %d", condition_list[i].right_value.type);
+    }
+  }
+  update_stmt->set_conditions(condition_list, condition_num);
+  update_stmt->update_filter(db);
   Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt());
   if (nullptr == scan_oper) {
     scan_oper = new TableScanOperator(update_stmt->table());

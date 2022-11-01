@@ -54,7 +54,21 @@ void relation_attr_destroy(RelAttr *relation_attr)
 
 void set_value_init(SetValue *set_value, const char* attribute_name, Value *value){
   set_value->attribute_name = strdup(attribute_name);
-  set_value->value = *value;
+  copy_value(&(set_value->value), *value);
+  //set_value->value = *value;
+}
+
+void copy_value(Value *dst, Value source){
+  dst->type = source.type;
+  if(source.type == QUERY){
+    dst->data = (Query*)malloc(sizeof(Query));
+    memcpy(dst->data, source.data, sizeof(Query));
+  }else{
+    dst->data = source.data;
+  }
+  // if(dst.type == CHARS){
+  //   const size_t data_len = strlen((const char *)source.data);
+  // }
 }
 
 void set_value_destory(SetValue *set_value){

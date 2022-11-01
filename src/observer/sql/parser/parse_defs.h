@@ -216,6 +216,7 @@ void relation_attr_init(RelAttr *relation_attr, const char *relation_name, const
 void relation_attr_destroy(RelAttr *relation_attr);
 
 void set_value_init(SetValue *set_value, const char* attribute_name, Value *value);
+void copy_value(Value *dst, Value source);
 void set_value_destory(SetValue *set_value);
 
 void value_init_integer(Value *value, int v);

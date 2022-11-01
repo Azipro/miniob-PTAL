@@ -356,7 +356,7 @@ value:
 	| LBRACE sub_select RBRACE{
 		value_init_query(&CONTEXT->values[CONTEXT->value_length++], GET_SUB_CONTEXT->ssql);
 		// 赋值后将子句清空
-		memset(GET_SUB_CONTEXT, 0, sizeof(*GET_SUB_CONTEXT));
+		memset(GET_SUB_CONTEXT->ssql, 0, sizeof(*GET_SUB_CONTEXT->ssql));
 	}
     ;
     
@@ -374,7 +374,6 @@ update:			/*  update 语句的语法解析树*/
     UPDATE ID update_list where SEMICOLON
 		{
 			CONTEXT->ssql->flag = SCF_UPDATE;//"update";
-			Value *value = &CONTEXT->values[0];
 			updates_init(&CONTEXT->ssql->sstr.update, $2, CONTEXT->conditions, CONTEXT->condition_length);
 			CONTEXT->condition_length = 0;
 		}
@@ -431,6 +430,8 @@ sub_select_attr:
 			relation_attr_init(&attr, $1, "*");
 			selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
 	}
+	| sub_agg_func sub_attr_list{
+	}
     ;
 sub_attr_list:
     /* empty */
@@ -453,7 +454,68 @@ sub_attr_list:
         // CONTEXT->ssql->sstr.selection.attributes[CONTEXT->select_length].attribute_name=$4;
         // CONTEXT->ssql->sstr.selection.attributes[CONTEXT->select_length++].relation_name=$2;
   	  }
+	| COMMA sub_agg_func sub_attr_list
   	;
+
+sub_agg_func:
+	MAX LBRACE ID RBRACE {
+	  RelAttr attr;
+	  aggregation_attr_init(&attr, NULL, $3, AGG_MAX);
+	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+	}
+	| MAX LBRACE ID DOT ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, $3, $5, AGG_MAX);
+       	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+       	}
+	| MIN LBRACE ID RBRACE {
+	  RelAttr attr;
+	  aggregation_attr_init(&attr, NULL, $3, AGG_MIN);
+	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+	}
+	| MIN LBRACE ID DOT ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, $3, $5, AGG_MIN);
+       	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| SUM LBRACE ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, NULL, $3, AGG_SUM);
+       	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| SUM LBRACE ID DOT ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, $3, $5, AGG_SUM);
+       	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| COUNT LBRACE NUMBER RBRACE {
+       	  RelAttr attr;
+       	  char *str = malloc(10 * sizeof(char));
+       	  snprintf(str, 10, "%d", $3);
+       	  aggregation_attr_init(&attr, NULL, str, AGG_COUNT);
+       	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| COUNT LBRACE STAR RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, NULL, "*", AGG_COUNT);
+       	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| COUNT LBRACE ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, NULL, $3, AGG_COUNT);
+       	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+       	}
+	| AVG LBRACE ID RBRACE {
+	  RelAttr attr;
+	  aggregation_attr_init(&attr, NULL, $3, AGG_AVG);
+	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+	}
+	| AVG LBRACE ID DOT ID RBRACE {
+	  RelAttr attr;
+	  aggregation_attr_init(&attr, $3, $5, AGG_AVG);
+	  selects_append_attribute(&GET_SUB_CONTEXT->ssql->sstr.selection, &attr);
+	}
+	;
 
 sub_rel_list:
     /* empty */
@@ -980,6 +1042,7 @@ int sql_parse(const char *s, Query *sqls){
 	context.sub_context = (struct ParserContext *)malloc(sizeof(struct ParserContext));
 	memset(context.sub_context, 0, sizeof(*context.sub_context));
 	context.sub_context->ssql = (Query*)malloc(sizeof(Query));
+	memset(context.sub_context->ssql, 0, sizeof(*context.sub_context->ssql));
 
 	yyscan_t scanner;
 	yylex_init_extra(&context, &scanner);
