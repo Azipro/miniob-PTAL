@@ -24,10 +24,21 @@ See the Mulan PSL v2 for more details. */
 #define MAX_ERROR_MESSAGE 20
 #define MAX_DATA 50
 
+//聚合函数类型
+typedef enum {
+  AGG_NO,
+  AGG_MAX,
+  AGG_MIN,
+  AGG_SUM,
+  AGG_COUNT,
+  AGG_AVG,
+} AggType;
+
 //属性结构体
 typedef struct {
   char *relation_name;   // relation name (may be NULL) 表名
   char *attribute_name;  // attribute name              属性名
+  AggType aggregation_type; // aggregation type         聚合函数类型
 } RelAttr;
 
 typedef enum {
@@ -80,9 +91,10 @@ typedef struct _Condition {
 
 // struct of select
 typedef struct {
+  size_t agg_num;         // Length of aggregation functions in Select clause
   size_t attr_num;                // Length of attrs in Select clause
   RelAttr attributes[MAX_NUM];    // attrs in Select clause
-  size_t relation_num;            // Length of relations in Fro clause
+  size_t relation_num;            // Length of relations in From clause
   char *relations[MAX_NUM];       // relations in From clause
   size_t condition_num;           // Length of conditions in Where clause
   Condition conditions[MAX_NUM];  // conditions in Where clause

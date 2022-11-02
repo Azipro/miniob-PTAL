@@ -23,6 +23,8 @@ public:
   Field() = default;
   Field(const Table *table, const FieldMeta *field) : table_(table), field_(field)
   {}
+  Field(const Table *table, const FieldMeta *field, const AggType agg_type, char * agg_str) :
+        table_(table), field_(field), agg_type_(agg_type), agg_str_(agg_str) {}
 
   const Table *table() const { return table_; }
   const FieldMeta *meta() const { return field_; }
@@ -43,7 +45,31 @@ public:
   {
     this->field_ = field;
   }
+  void set_agg_type(AggType agg_type)
+  {
+    this->agg_type_ = agg_type;
+  }
+  void set_agg_str(char * agg_str)
+  {
+    this->agg_str_ = agg_str;
+  }
+
+  const FieldMeta * field_meta()
+  {
+    return this->field_;
+  }
+  AggType agg_type() const
+  {
+    return this->agg_type_;
+  }
+  char * agg_str() const
+  {
+    return this->agg_str_;
+  }
+
 private:
   const Table *table_ = nullptr;
   const FieldMeta *field_ = nullptr;
+  AggType agg_type_ = AGG_NO;
+  char * agg_str_;
 };

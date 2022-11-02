@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 /* A Bison parser, made by GNU Bison 3.5.1.  */
+=======
+/* A Bison parser, made by GNU Bison 3.7.  */
+>>>>>>> miniob_test
 
 /* Bison interface for Yacc-like parsers in C
 
@@ -49,6 +53,7 @@ extern int yydebug;
 # define YYTOKENTYPE
   enum yytokentype
   {
+<<<<<<< HEAD
     SEMICOLON = 258,
     CREATE = 259,
     DROP = 260,
@@ -103,6 +108,70 @@ extern int yydebug;
     SSS = 309,
     STAR = 310,
     STRING_V = 311
+=======
+    YYEMPTY = -2,
+    YYEOF = 0,                     /* "end of file"  */
+    YYerror = 256,                 /* error  */
+    YYUNDEF = 257,                 /* "invalid token"  */
+    SEMICOLON = 258,               /* SEMICOLON  */
+    CREATE = 259,                  /* CREATE  */
+    DROP = 260,                    /* DROP  */
+    TABLE = 261,                   /* TABLE  */
+    TABLES = 262,                  /* TABLES  */
+    INDEX = 263,                   /* INDEX  */
+    SELECT = 264,                  /* SELECT  */
+    DESC = 265,                    /* DESC  */
+    SHOW = 266,                    /* SHOW  */
+    SYNC = 267,                    /* SYNC  */
+    INSERT = 268,                  /* INSERT  */
+    DELETE = 269,                  /* DELETE  */
+    UPDATE = 270,                  /* UPDATE  */
+    LBRACE = 271,                  /* LBRACE  */
+    RBRACE = 272,                  /* RBRACE  */
+    COMMA = 273,                   /* COMMA  */
+    TRX_BEGIN = 274,               /* TRX_BEGIN  */
+    TRX_COMMIT = 275,              /* TRX_COMMIT  */
+    TRX_ROLLBACK = 276,            /* TRX_ROLLBACK  */
+    INT_T = 277,                   /* INT_T  */
+    STRING_T = 278,                /* STRING_T  */
+    FLOAT_T = 279,                 /* FLOAT_T  */
+    DATE_T = 280,                  /* DATE_T  */
+    HELP = 281,                    /* HELP  */
+    EXIT = 282,                    /* EXIT  */
+    DOT = 283,                     /* DOT  */
+    INTO = 284,                    /* INTO  */
+    VALUES = 285,                  /* VALUES  */
+    FROM = 286,                    /* FROM  */
+    WHERE = 287,                   /* WHERE  */
+    AND = 288,                     /* AND  */
+    SET = 289,                     /* SET  */
+    INNER = 290,                   /* INNER  */
+    JOIN = 291,                    /* JOIN  */
+    ON = 292,                      /* ON  */
+    LOAD = 293,                    /* LOAD  */
+    DATA = 294,                    /* DATA  */
+    INFILE = 295,                  /* INFILE  */
+    EQ = 296,                      /* EQ  */
+    LT = 297,                      /* LT  */
+    GT = 298,                      /* GT  */
+    LE = 299,                      /* LE  */
+    GE = 300,                      /* GE  */
+    NE = 301,                      /* NE  */
+    NOT = 302,                     /* NOT  */
+    LIKE = 303,                    /* LIKE  */
+    MAX = 304,                     /* MAX  */
+    MIN = 305,                     /* MIN  */
+    SUM = 306,                     /* SUM  */
+    COUNT = 307,                   /* COUNT  */
+    AVG = 308,                     /* AVG  */
+    NUMBER = 309,                  /* NUMBER  */
+    FLOAT = 310,                   /* FLOAT  */
+    ID = 311,                      /* ID  */
+    PATH = 312,                    /* PATH  */
+    SSS = 313,                     /* SSS  */
+    STAR = 314,                    /* STAR  */
+    STRING_V = 315                 /* STRING_V  */
+>>>>>>> miniob_test
   };
 #endif
 
@@ -110,7 +179,11 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
+<<<<<<< HEAD
 #line 115 "yacc_sql.y"
+=======
+#line 119 "yacc_sql.y"
+>>>>>>> miniob_test
 
   struct _Attr *attr;
   struct _Condition *condition1;
@@ -120,7 +193,11 @@ union YYSTYPE
   float floats;
 	char *position;
 
+<<<<<<< HEAD
 #line 124 "yacc_sql.tab.h"
+=======
+#line 134 "yacc_sql.tab.h"
+>>>>>>> miniob_test
 
 };
 typedef union YYSTYPE YYSTYPE;

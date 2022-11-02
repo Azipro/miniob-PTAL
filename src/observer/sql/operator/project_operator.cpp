@@ -66,7 +66,7 @@ void ProjectOperator::add_projection(const Table *table, const FieldMeta *field_
     strcat(alia, ".");
     strcat(alia, field_name);
   } else { // 单表
-    alia = (char*)malloc(strlen(field_name) + 1); 
+    alia = (char*)malloc(strlen(field_name) + 1);
     strcpy(alia, field_name);
   }
   spec->set_alias(alia);

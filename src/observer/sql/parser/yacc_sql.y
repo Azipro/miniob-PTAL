@@ -111,6 +111,11 @@ ParserContext *get_context(yyscan_t scanner)
         NE
         NOT
         LIKE
+        MAX
+        MIN
+        SUM
+        COUNT
+        AVG
 
 %union {
   struct _Attr *attr;
@@ -441,7 +446,9 @@ select_attr:
 			relation_attr_init(&attr, $1, "*");
 			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
 	}
+	| agg_func attr_list
     ;
+
 attr_list:
     /* empty */
     | COMMA ID attr_list {
@@ -463,7 +470,68 @@ attr_list:
         // CONTEXT->ssql->sstr.selection.attributes[CONTEXT->select_length].attribute_name=$4;
         // CONTEXT->ssql->sstr.selection.attributes[CONTEXT->select_length++].relation_name=$2;
   	  }
+  	| COMMA agg_func attr_list
   	;
+
+agg_func:
+	MAX LBRACE ID RBRACE {
+	  RelAttr attr;
+	  aggregation_attr_init(&attr, NULL, $3, AGG_MAX);
+	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+	}
+	| MAX LBRACE ID DOT ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, $3, $5, AGG_MAX);
+       	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+       	}
+	| MIN LBRACE ID RBRACE {
+	  RelAttr attr;
+	  aggregation_attr_init(&attr, NULL, $3, AGG_MIN);
+	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+	}
+	| MIN LBRACE ID DOT ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, $3, $5, AGG_MIN);
+       	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| SUM LBRACE ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, NULL, $3, AGG_SUM);
+       	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| SUM LBRACE ID DOT ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, $3, $5, AGG_SUM);
+       	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| COUNT LBRACE NUMBER RBRACE {
+       	  RelAttr attr;
+       	  char *str = malloc(10 * sizeof(char));
+       	  snprintf(str, 10, "%d", $3);
+       	  aggregation_attr_init(&attr, NULL, str, AGG_COUNT);
+       	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| COUNT LBRACE STAR RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, NULL, "*", AGG_COUNT);
+       	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+       	}
+       	| COUNT LBRACE ID RBRACE {
+       	  RelAttr attr;
+       	  aggregation_attr_init(&attr, NULL, $3, AGG_COUNT);
+       	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+       	}
+	| AVG LBRACE ID RBRACE {
+	  RelAttr attr;
+	  aggregation_attr_init(&attr, NULL, $3, AGG_AVG);
+	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+	}
+	| AVG LBRACE ID DOT ID RBRACE {
+	  RelAttr attr;
+	  aggregation_attr_init(&attr, $3, $5, AGG_AVG);
+	  selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+	}
+	;
 
 rel_list:
     /* empty */

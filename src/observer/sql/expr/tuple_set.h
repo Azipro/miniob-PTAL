@@ -4,6 +4,8 @@
 #include <vector>
 #include <unordered_map>
 #include "util/util.h"
+#include "util/comparator.h"
+#include "util/typecast.h"
 #include "sql/expr/tuple.h"
 #include "sql/stmt/filter_stmt.h"
 #include "storage/common/field.h"
@@ -181,6 +183,104 @@ public:
     return RC::SUCCESS;
   }
 
+  RC print_agg_set(std::ostream &os, const std::vector<Field> &query_fields)
+  {
+    std::vector<int> query_index(query_fields.size(), -1);
+    for (int i = 0 ; i < query_fields.size() ; ++ i) {
+      for (int j = 0 ; j < speces_.size() ; ++ j) {
+        const char *table_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->table_name();
+        const char *field_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->field_name();
+        if (0 == strcmp(query_fields[i].table_name(), table_name) && 0 == strcmp(query_fields[i].field_name(), field_name)) {
+          query_index[i] = j;
+          break;
+        }
+      }
+      if (query_index[i] == -1) {
+        LOG_ERROR("not match query field in tuple set.");
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+
+      if (i != 0) {
+        os << "|";
+      }
+
+      if (speces_[query_index[i]]->alias()) {
+        char tmp[255];
+        if (0 == strcmp(query_fields[i].agg_str(), "*") || is_number(query_fields[i].agg_str())) {
+          strcpy(tmp, query_fields[i].agg_str());
+        } else {
+          strcpy(tmp, speces_[query_index[i]]->alias());
+        }
+        char alias[255];
+        switch (query_fields[i].agg_type()) {
+          case AGG_MAX:
+            sprintf(alias, "MAX(%s)", tmp);
+            break;
+          case AGG_MIN:
+            sprintf(alias, "MIN(%s)", tmp);
+            break;
+          case AGG_SUM:
+            sprintf(alias, "SUM(%s)", tmp);
+            break;
+          case AGG_COUNT:
+            sprintf(alias, "COUNT(%s)", tmp);
+            break;
+          case AGG_AVG:
+            sprintf(alias, "AVG(%s)", tmp);
+            break;
+          default:
+            LOG_WARN("unknown aggregation function");
+            return RC::INVALID_ARGUMENT;
+        }
+        os << alias; // TODO: 多表需要带表名, 可能需要处理常数字段
+      }
+    }
+    if (query_fields.size() > 0) {
+      os << "\n";
+    }
+
+    TupleCell cell;
+    RC rc = RC::SUCCESS;
+    bool first_field;
+    first_field = true;
+    for (int i = 0 ; i < query_fields.size() ; ++ i) {
+      TupleCell cell;
+      switch (query_fields[i].agg_type()) {
+        case AGG_MAX:
+          rc = max_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        case AGG_MIN:
+          rc = min_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        case AGG_SUM:
+          rc = sum_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        case AGG_COUNT:
+          rc = count_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        case AGG_AVG:
+          rc = avg_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        default:
+          LOG_WARN("unknown aggregation function");
+          return RC::INVALID_ARGUMENT;
+      }
+      if (!first_field) {
+        os << " | ";
+      } else {
+        first_field = false;
+      }
+      cell.to_string(os);
+    }
+    os << std::endl;
+    return RC::SUCCESS;
+  }
+
 public:
   void set_speces(const std::vector<TupleCellSpec*> &speces) { speces_ = speces; }
   void set_tuples(const std::vector<MagicTuple> &tuples) { tuples_ = tuples; }
@@ -188,6 +288,150 @@ public:
 private:
   std::vector<TupleCellSpec*> speces_;
   std::vector<MagicTuple> tuples_;
+
+  RC max_cell(int j, TupleCell & cell)
+  {
+    if (tuples_.size() == 0) {
+      return RC::SUCCESS;
+    }
+    TupleCell cell1;
+    tuples_[0].cell_at(j, cell1);
+    cell.set_type(cell1.attr_type());
+    cell.set_length(cell1.length());
+    cell.set_data(cell1.data());
+    AttrType attr_type = cell.attr_type();
+    for (int i = 1; i < tuples_.size(); ++i) {
+      TupleCell cell2;
+      tuples_[i].cell_at(j, cell2);
+      if (cell.compare(cell2) < 0) {
+        cell.set_type(cell2.attr_type());
+        cell.set_length(cell2.length());
+        cell.set_data(cell2.data());
+      }
+    }
+    return RC::SUCCESS;
+  }
+
+  RC min_cell(int j, TupleCell & cell)
+  {
+    if (tuples_.size() == 0) {
+      return RC::SUCCESS;
+    }
+    TupleCell cell1;
+    tuples_[0].cell_at(j, cell1);
+    cell.set_type(cell1.attr_type());
+    cell.set_length(cell1.length());
+    cell.set_data(cell1.data());
+    AttrType attr_type = cell.attr_type();
+    for (int i = 1; i < tuples_.size(); ++i) {
+      TupleCell cell2;
+      tuples_[i].cell_at(j, cell2);
+      if (cell.compare(cell2) > 0) {
+        cell.set_type(cell2.attr_type());
+        cell.set_length(cell2.length());
+        cell.set_data(cell2.data());
+      }
+    }
+    return RC::SUCCESS;
+  }
+
+  RC sum_cell(int j, TupleCell & cell)
+  {
+    if (tuples_.size() == 0) {
+      return RC::SUCCESS;
+    }
+    TupleCell cell1;
+    tuples_[0].cell_at(j, cell1);
+    cell.set_type(cell1.attr_type());
+    cell.set_length(cell1.length());
+    cell.set_data(cell1.data());
+    AttrType attr_type = cell.attr_type();
+    if (attr_type == INTS) {
+      int n = (int)*cell.data();
+      for (int i = 1; i < tuples_.size(); ++i) {
+        TupleCell cell2;
+        tuples_[i].cell_at(j, cell2);
+        n += (int)*cell2.data();
+      }
+      char * data = (char * )malloc(sizeof(int));
+      memcpy(data, (char *)&n, sizeof(int));
+      cell.set_data(data);
+      cell.set_type(INTS);
+      cell.set_length(sizeof(int));
+    } else if (attr_type == FLOATS) {
+      float n = string_to_float(double2string(*(float*)cell.data()).c_str());
+      for (int i = 1; i < tuples_.size(); ++i) {
+        TupleCell cell2;
+        tuples_[i].cell_at(j, cell2);
+        n += string_to_float(double2string(*(float*)cell2.data()).c_str());
+      }
+      char * data = (char * )malloc(sizeof(float));
+      memcpy(data, (char *)&n, sizeof(float));
+      cell.set_data(data);
+      cell.set_type(FLOATS);
+      cell.set_length(sizeof(float));
+    } else if (attr_type == CHARS) {
+      float n = string_to_float(cell.data());
+      for (int i = 1; i < tuples_.size(); ++i) {
+        TupleCell cell2;
+        tuples_[i].cell_at(j, cell2);
+        n += string_to_float(cell2.data());
+      }
+      char * data = (char * )malloc(sizeof(float));
+      memcpy(data, (char *)&n, sizeof(float));
+      cell.set_data(data);
+      cell.set_type(FLOATS);
+      cell.set_length(sizeof(float));
+    }
+    return RC::SUCCESS;
+  }
+
+  RC count_cell(int j, TupleCell & cell)
+  {
+    int n = 0;
+    for (int i = 0; i < tuples_.size(); ++i) {
+      TupleCell cell2;
+      tuples_[i].cell_at(j, cell2);
+      if (cell2.data() != nullptr) {
+        n++;
+      }
+    }
+    char * data = (char * )malloc(sizeof(int));
+    memcpy(data, (char *)&n, sizeof(int));
+    cell.set_data(data);
+    cell.set_type(INTS);
+    cell.set_length(sizeof(int));
+    return RC::SUCCESS;
+  }
+
+  RC avg_cell(int j, TupleCell & cell)
+  {
+    RC rc;
+    TupleCell cell1, cell2;
+    rc = sum_cell(j, cell1);
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+    rc = count_cell(j, cell2);
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+    float n;
+    AttrType attr_type = cell1.attr_type();
+    if (attr_type == INTS) {
+      n = (float)*(int *)cell1.data();
+    } else if (attr_type == FLOATS) {
+      n = *(float *)cell1.data();
+    }
+    int m = *(int *)cell2.data();
+    n /= m;
+    char * data = (char *)malloc(sizeof(float));
+    memcpy(data, (char *)&n, sizeof(float));
+    cell.set_data(data);
+    cell.set_type(FLOATS);
+    cell.set_length(sizeof(float));
+    return RC::SUCCESS;
+  }
 };
 
 void speces_copy(const std::vector<TupleCellSpec*> &src, std::vector<TupleCellSpec*> &dst, HashLocation &locat){
