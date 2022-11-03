@@ -828,6 +828,7 @@ insert into t values(2, '222', 2, 2);
 select * from t;
 update t set col1 = 10;
 update t set col1 = 10, col2 = 20;
+update t set col1 = '1a' where id=1;
 
 update t set col1=(select col1 from t where t.id=2) where t.id=1;
 update t set col1=(select col1 from t where t.id=2) where t.id=1;
@@ -839,6 +840,8 @@ update t set col1 = 1 where id=(select count(id) from t);
 update t set col1=(select count(id) from t), col2=(select count(id) from t) where id=1;
 update t set col1=(select count(id) from t), col2=(select max(id) from t) where id=1;
 update t set  col1=(select count(id) from t), col2=(select max(id) from t) where id=(select min(id) from t);
+update t set name=(select max(name) from t) where id=1;
+update t set col1=(select max(name) from t) where id=1;
 */
 
 RC  ExecuteStage::convert_value(Db *db, Value & value){

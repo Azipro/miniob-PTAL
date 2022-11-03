@@ -30,6 +30,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/trx/trx.h"
 #include "storage/clog/clog.h"
 #include "util/date.h"
+#include "util/typecast.h"
 
 Table::~Table()
 {
@@ -761,6 +762,62 @@ RC Table::update_record(Trx *trx, Record *record, const Value *value, const char
   return rc;
 }
 
+RC Table::convert_value(Value *value, AttrType dst_type){
+  RC rc = RC::SUCCESS;
+  if (value->type == dst_type) {
+    return rc;
+  } else {
+    const AttrType value_type = value->type;
+    if (dst_type == DATES) {
+      int32_t date = -1;
+      rc = string_to_date((char *)value->data, date);
+      if (rc != RC::SUCCESS) {
+        LOG_TRACE("string_to_date fail, data=%s", value->data);
+        return rc;
+      }
+      value_destroy((Value *)value);
+      value_init_date((Value *)value, date);
+    } else if (dst_type == INTS) {
+      if (value_type == FLOATS) {
+        int32_t val = -1;
+        val = float_to_integer(*(float *)value->data);
+        value_destroy((Value *)value);
+        value_init_integer((Value *)value, val);
+      } else if (value_type == CHARS) {
+        int32_t val = -1;
+        val = string_to_integer((char *)value->data);
+        value_destroy((Value *)value);
+        value_init_integer((Value *)value, val);
+      }
+    } else if (dst_type == FLOATS) {
+      if (value_type == INTS) {
+        float val = -1;
+        val = integer_to_float(*(int32_t *)value->data);
+        value_destroy((Value *)value);
+        value_init_float((Value *)value, val);
+      } else if (value_type == CHARS) {
+        float val = -1;
+        val = string_to_float((char *)value->data);
+        value_destroy((Value *)value);
+        value_init_float((Value *)value, val);
+      }
+    } else if (dst_type == CHARS) {
+      if (value_type == INTS) {
+        char *val = nullptr;
+        val = integer_to_string(*(int32_t *)value->data);
+        value_destroy((Value *)value);
+        value_init_string((Value *)value, val);
+      } else if (value_type == FLOATS) {
+        char *val = nullptr;
+        val = float_to_string(*(float *)value->data);
+        value_destroy((Value *)value);
+        value_init_string((Value *)value, val);
+      }
+    }
+    return rc;
+  }
+}
+
 RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_list)
 {
   RC rc = RC::SUCCESS;
@@ -791,8 +848,13 @@ RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_
     }
     // 类型不匹配
     if (field->type() != value_list[i].value.type) {
-      LOG_WARN("Failed to update record: type mismatch, field type: %d, value type: %d", field->type(), value_list[i].value.type);
-      return RC::INVALID_ARGUMENT;
+      convert_value(&value_list[i].value, field->type());
+      if (field->type() != value_list[i].value.type) {
+        LOG_WARN("Failed to update record: type mismatch, field type: %d, value type: %d",
+            field->type(),
+            value_list[i].value.type);
+        return RC::INVALID_ARGUMENT;
+      }
     }
     size_t copy_len = field->len();
     if (field->type() == CHARS) {
