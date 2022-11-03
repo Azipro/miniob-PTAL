@@ -42,6 +42,7 @@ public:
   FilterStmt *filter_stmt() const { return filter_stmt_; }
   size_t agg_num() const { return agg_num_; }
   const std::vector<OrderField> &order_fields() const { return order_fields_; }
+  const std::vector<GroupField> &group_fields() const { return group_fields_; }
 
 public:
   void set_query_fields(const std::vector<Field> &query_fields) { query_fields_ = query_fields; }
@@ -49,6 +50,7 @@ public:
   void set_Filter(FilterStmt *const filter_stmt) { filter_stmt_ = filter_stmt; }
   void set_agg_num(size_t agg_num) { agg_num_ = agg_num; }
   void set_order_fields(const std::vector<OrderField> &order_fields) { order_fields_ = order_fields; }
+  void set_group_fields(const std::vector<GroupField> &group_fields) { group_fields_ = group_fields; }
 
 private:
   std::vector<Field> query_fields_;
@@ -56,5 +58,6 @@ private:
   FilterStmt *filter_stmt_ = nullptr;
   size_t agg_num_ = 0;
   std::vector<OrderField> order_fields_;
+  std::vector<GroupField> group_fields_;
 };
 

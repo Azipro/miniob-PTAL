@@ -577,6 +577,15 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
     return rc;
   }
 
+  if (select_stmt->group_fields().size() > 0 && select_stmt->order_fields().size() == 0) {
+    std::vector<OrderField> order_fields;
+    std::vector<GroupField> group_fields = select_stmt->group_fields();
+    for (auto field : group_fields) {
+      order_fields.push_back(OrderField(field.table(), field.meta(), ORDER_ASC));
+    }
+    select_stmt->set_order_fields(order_fields);
+  }
+
   if (select_stmt->order_fields().size() > 0) {
     rc = magic_table->set_order_index(select_stmt->order_fields());
     if (rc != RC::SUCCESS) {
@@ -589,7 +598,14 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
   }
 
   std::stringstream ss;
-  if (select_stmt->agg_num() > 0) {
+  if (select_stmt->group_fields().size() > 0) {
+    rc = magic_table->set_group_index(select_stmt->group_fields());
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+    magic_table->set_group_map();
+    rc = magic_table->print_group_set(ss, select_stmt->query_fields());
+  } else if (select_stmt->agg_num() > 0) {
     rc = magic_table->print_agg_set(ss, select_stmt->query_fields());
   } else {
     rc = magic_table->print_set(ss, select_stmt->query_fields());

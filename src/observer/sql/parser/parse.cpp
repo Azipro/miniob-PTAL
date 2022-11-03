@@ -188,6 +188,28 @@ void order_destroy(OrderBy *order_by)
   order_by->order_type = ORDER_ASC;
 }
 
+void group_init(GroupBy *group_by, const char *relation_name, const char *attribute_name)
+{
+  RelAttr relation_attr;
+  if (relation_name != nullptr) {
+    relation_attr.relation_name = strdup(relation_name);
+  } else {
+    relation_attr.relation_name = nullptr;
+  }
+  relation_attr.attribute_name = strdup(attribute_name);
+  relation_attr.aggregation_type = AGG_NO;
+  group_by->relation_attr = relation_attr;
+}
+
+void group_destroy(GroupBy *group_by)
+{
+  free(group_by->relation_attr.relation_name);
+  free(group_by->relation_attr.attribute_name);
+  group_by->relation_attr.relation_name = nullptr;
+  group_by->relation_attr.attribute_name = nullptr;
+  group_by->relation_attr.aggregation_type = AGG_NO;
+}
+
 void selects_init(Selects *selects, ...);
 void selects_append_attribute(Selects *selects, RelAttr *rel_attr)
 {
@@ -215,6 +237,11 @@ void selects_append_order(Selects *selects, OrderBy *order_by)
   selects->order_by[selects->order_num++] = *order_by;
 }
 
+void selects_append_group(Selects *selects, GroupBy *group_by)
+{
+  selects->group_by[selects->group_num++] = *group_by;
+}
+
 void selects_destroy(Selects *selects)
 {
   for (size_t i = 0; i < selects->attr_num; i++) {
@@ -237,6 +264,11 @@ void selects_destroy(Selects *selects)
     order_destroy(&selects->order_by[i]);
   }
   selects->order_num = 0;
+
+  for (size_t i = 0; i < selects->group_num; i++) {
+    group_destroy(&selects->group_by[i]);
+  }
+  selects->group_num = 0;
 }
 
 void inserts_more_init(size_t *value_num, size_t *insert_length) {

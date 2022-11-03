@@ -105,6 +105,10 @@ typedef struct {
   OrderType order_type;
 } OrderBy;
 
+typedef struct {
+  RelAttr relation_attr;
+} GroupBy;
+
 // struct of select
 typedef struct {
   size_t agg_num;                 // Length of aggregation functions in Select clause
@@ -116,6 +120,8 @@ typedef struct {
   Condition conditions[MAX_NUM];  // conditions in Where clause
   size_t order_num;               // Length in Order By clause
   OrderBy order_by[MAX_NUM];      // Order By clause
+  size_t group_num;               // Length in Group By clause
+  GroupBy group_by[MAX_NUM];      // Group By clause
 } Selects;
 
 typedef struct {

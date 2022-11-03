@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <unordered_map>
+#include <map>
 #include "util/util.h"
 #include "util/comparator.h"
 #include "util/typecast.h"
@@ -232,7 +233,7 @@ public:
             LOG_WARN("unknown aggregation function");
             return RC::INVALID_ARGUMENT;
         }
-        os << alias; // TODO: 多表需要带表名, 可能需要处理常数字段
+        os << alias;
       }
     }
     if (query_fields.size() > 0) {
@@ -282,6 +283,113 @@ public:
       cell.to_string(os);
     }
     os << std::endl;
+    return RC::SUCCESS;
+  }
+
+  RC print_group_set(std::ostream &os, const std::vector<Field> &query_fields)
+  {
+    std::vector<int> query_index(query_fields.size(), -1);
+    for (int i = 0 ; i < query_fields.size() ; ++ i) {
+      for (int j = 0 ; j < speces_.size() ; ++ j) {
+        const char *table_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->table_name();
+        const char *field_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->field_name();
+        if (0 == strcmp(query_fields[i].table_name(), table_name) && 0 == strcmp(query_fields[i].field_name(), field_name)) {
+          query_index[i] = j;
+          break;
+        }
+      }
+      if (query_index[i] == -1) {
+        LOG_ERROR("not match query field in tuple set.");
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+
+      if (i != 0) {
+        os << "|";
+      }
+
+      if (speces_[query_index[i]]->alias()) {
+        if (query_fields[i].agg_type() == AGG_NO) {
+          os << speces_[query_index[i]]->alias();
+        } else {
+          char tmp[255];
+          if (0 == strcmp(query_fields[i].agg_str(), "*") || is_number(query_fields[i].agg_str())) {
+            strcpy(tmp, query_fields[i].agg_str());
+          } else {
+            strcpy(tmp, speces_[query_index[i]]->alias());
+          }
+          char alias[255];
+          switch (query_fields[i].agg_type()) {
+            case AGG_MAX:
+              sprintf(alias, "MAX(%s)", tmp);
+              break;
+            case AGG_MIN:
+              sprintf(alias, "MIN(%s)", tmp);
+              break;
+            case AGG_SUM:
+              sprintf(alias, "SUM(%s)", tmp);
+              break;
+            case AGG_COUNT:
+              sprintf(alias, "COUNT(%s)", tmp);
+              break;
+            case AGG_AVG:
+              sprintf(alias, "AVG(%s)", tmp);
+              break;
+            default:
+              LOG_WARN("unknown aggregation function");
+              return RC::INVALID_ARGUMENT;
+          }
+          os << alias;
+        }
+      }
+    }
+    if (query_fields.size() > 0) {
+      os << "\n";
+    }
+
+    RC rc = RC::SUCCESS;
+
+    for (auto item : group_map_) {
+      bool first_field;
+      first_field = true;
+      int key = item.first;
+      std::vector<int> lines = item.second;
+      for (int i = 0; i < query_fields.size(); ++i) {
+        TupleCell cell;
+        if (query_fields[i].agg_type() == AGG_NO) {
+          tuples_[key].cell_at(query_index[i], cell);
+        } else {
+          switch (query_fields[i].agg_type()) {
+            case AGG_MAX:
+              rc = group_max_cell(lines, query_index[i], cell);
+              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+              break;
+            case AGG_MIN:
+              rc = group_min_cell(lines, query_index[i], cell);
+              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+              break;
+            case AGG_SUM:
+              rc = group_sum_cell(lines, query_index[i], cell);
+              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+              break;
+            case AGG_COUNT:
+              rc = group_count_cell(lines, query_index[i], cell);
+              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+              break;
+            case AGG_AVG:
+              rc = group_avg_cell(lines, query_index[i], cell);
+              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+              break;
+          }
+        }
+        if (!first_field) {
+          os << " | ";
+        } else {
+          first_field = false;
+        }
+        cell.to_string(os);
+      }
+      os << std::endl;
+    }
     return RC::SUCCESS;
   }
 
@@ -428,11 +536,66 @@ public:
     return RC::SUCCESS;
   }
 
+  RC set_group_index(const std::vector<GroupField> &group_fields)
+  {
+    group_index_ = std::vector<int>(group_fields.size(), -1);
+    for (int i = 0 ; i < group_fields.size() ; ++ i) {
+      for (int j = 0 ; j < speces_.size() ; ++ j) {
+        const char *table_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->table_name();
+        const char *field_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->field_name();
+        if (0 == strcmp(group_fields[i].table_name(), table_name) && 0 == strcmp(group_fields[i].field_name(), field_name)) {
+          group_index_[i] = j;
+          break;
+        }
+      }
+      if (group_index_[i] == -1) {
+        LOG_ERROR("not match group field in tuple set.");
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+    }
+    return RC::SUCCESS;
+  }
+
+  int group_map_index(int i)
+  {
+    for (auto item : group_map_) {
+      int j = item.first;
+      bool flag = true;
+      for (int k : group_index_) {
+        TupleCell cell1, cell2;
+        tuples_[i].cell_at(k, cell1);
+        tuples_[j].cell_at(k, cell2);
+        if (0 != cell1.compare(cell2)) {
+          flag = false;
+          break;
+        }
+      }
+      if (flag) {
+        return j;
+      }
+    }
+    return -1;
+  }
+
+  void set_group_map()
+  {
+    for (int i = 0; i < tuples_.size(); ++i) {
+      int j = group_map_index(i);
+      if (j != -1) {
+        group_map_[j].push_back(i);
+      } else {
+        group_map_[i] = std::vector<int>{i};
+      }
+    }
+  }
+
 private:
   std::vector<TupleCellSpec*> speces_;
   std::vector<MagicTuple> tuples_;
   static std::vector<int> order_index_;
   static std::vector<OrderType> order_type_;
+  std::vector<int> group_index_;
+  std::map<int, std::vector<int> > group_map_;
 
   RC max_cell(int j, TupleCell & cell)
   {
@@ -607,6 +770,150 @@ private:
       cell.set_data(data);
       cell.set_type(FLOATS);
     }
+    cell.set_length(sizeof(float));
+    return RC::SUCCESS;
+  }
+
+  RC group_max_cell(std::vector<int>lines, int j, TupleCell & cell)
+  {
+    if (lines.size() == 0) {
+      return RC::SUCCESS;
+    }
+    TupleCell cell1;
+    tuples_[lines[0]].cell_at(j, cell1);
+    cell.set_type(cell1.attr_type());
+    cell.set_length(cell1.length());
+    cell.set_data(cell1.data());
+    AttrType attr_type = cell.attr_type();
+    for (int i : lines) {
+      TupleCell cell2;
+      tuples_[i].cell_at(j, cell2);
+      if (cell.compare(cell2) < 0) {
+        cell.set_type(cell2.attr_type());
+        cell.set_length(cell2.length());
+        cell.set_data(cell2.data());
+      }
+    }
+    return RC::SUCCESS;
+  }
+
+  RC group_min_cell(std::vector<int>lines, int j, TupleCell & cell)
+  {
+    if (lines.size() == 0) {
+      return RC::SUCCESS;
+    }
+    TupleCell cell1;
+    tuples_[lines[0]].cell_at(j, cell1);
+    cell.set_type(cell1.attr_type());
+    cell.set_length(cell1.length());
+    cell.set_data(cell1.data());
+    AttrType attr_type = cell.attr_type();
+    for (int i : lines) {
+      TupleCell cell2;
+      tuples_[i].cell_at(j, cell2);
+      if (cell.compare(cell2) > 0) {
+        cell.set_type(cell2.attr_type());
+        cell.set_length(cell2.length());
+        cell.set_data(cell2.data());
+      }
+    }
+    return RC::SUCCESS;
+  }
+
+  RC group_sum_cell(std::vector<int>lines, int j, TupleCell & cell)
+  {
+    if (lines.size() == 0) {
+      return RC::SUCCESS;
+    }
+    TupleCell cell1;
+    tuples_[lines[0]].cell_at(j, cell1);
+    cell.set_type(cell1.attr_type());
+    cell.set_length(cell1.length());
+    cell.set_data(cell1.data());
+    AttrType attr_type = cell.attr_type();
+    if (attr_type == INTS) {
+      int n = (int)*cell.data();
+      for (int i = 1; i < lines.size(); i++) {
+        TupleCell cell2;
+        tuples_[lines[i]].cell_at(j, cell2);
+        n += (int)*cell2.data();
+      }
+      char * data = (char * )malloc(sizeof(int));
+      memcpy(data, (char *)&n, sizeof(int));
+      cell.set_data(data);
+      cell.set_type(INTS);
+      cell.set_length(sizeof(int));
+    } else if (attr_type == FLOATS) {
+      float n = string_to_float(double2string(*(float*)cell.data()).c_str());
+      for (int i = 1; i < lines.size(); i++) {
+        TupleCell cell2;
+        tuples_[lines[i]].cell_at(j, cell2);
+        n += string_to_float(double2string(*(float*)cell2.data()).c_str());
+      }
+      char * data = (char * )malloc(sizeof(float));
+      memcpy(data, (char *)&n, sizeof(float));
+      cell.set_data(data);
+      cell.set_type(FLOATS);
+      cell.set_length(sizeof(float));
+    } else if (attr_type == CHARS) {
+      float n = string_to_float(cell.data());
+      for (int i = 1; i < lines.size(); i++) {
+        TupleCell cell2;
+        tuples_[lines[i]].cell_at(j, cell2);
+        n += string_to_float(cell2.data());
+      }
+      char * data = (char * )malloc(sizeof(float));
+      memcpy(data, (char *)&n, sizeof(float));
+      cell.set_data(data);
+      cell.set_type(FLOATS);
+      cell.set_length(sizeof(float));
+    }
+    return RC::SUCCESS;
+  }
+
+  RC group_count_cell(std::vector<int>lines, int j, TupleCell & cell)
+  {
+    int n = 0;
+    for (int i : lines) {
+      TupleCell cell2;
+      tuples_[i].cell_at(j, cell2);
+      if (cell2.data() != nullptr) {
+        n++;
+      }
+    }
+    char * data = (char * )malloc(sizeof(int));
+    memcpy(data, (char *)&n, sizeof(int));
+    cell.set_data(data);
+    cell.set_type(INTS);
+    cell.set_length(sizeof(int));
+    return RC::SUCCESS;
+  }
+
+  RC group_avg_cell(std::vector<int>lines, int j, TupleCell & cell)
+  {
+    RC rc;
+    TupleCell cell1, cell2;
+    rc = group_sum_cell(lines, j, cell1);
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+    rc = group_count_cell(lines, j, cell2);
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+    float n;
+    AttrType attr_type = cell1.attr_type();
+    if (attr_type == INTS) {
+      n = (float)*(int *)cell1.data();
+    } else if (attr_type == FLOATS) {
+      n = *(float *)cell1.data();
+    }
+    int m = *(int *)cell2.data();
+    n /= m;
+    char * data = (char *)malloc(sizeof(float));
+    memcpy(data, (char *)&n, sizeof(float));
+    cell.set_data(data);
+    cell.set_type(FLOATS);
     cell.set_length(sizeof(float));
     return RC::SUCCESS;
   }
