@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/common/table.h"
 #include "common/log/log.h"
 #include "sql/stmt/filter_stmt.h"
+#include "sql/executor/execute_stage.h"
 
 
 UpdateStmt::UpdateStmt(Table *table, FilterStmt *filter_stmt)

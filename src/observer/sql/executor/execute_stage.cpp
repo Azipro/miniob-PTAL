@@ -879,11 +879,13 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
   LOG_INFO("-----convert condition-----");
   update_stmt->set_value_list(value_list);
   Condition condition_list[MAX_NUM];
+  LOG_INFO("debug info, before conditions");
   update_stmt->conditions(condition_list);
+  LOG_INFO("debug info, after conditions");
   int condition_num = update_stmt->condition_num();
   LOG_INFO("condition_num=%d", condition_num);
   for(int i = 0; i < condition_num; i++){
-    LOG_INFO("conditon-%d: left_attr:%s, rigth_attr:%s, left_is_attr:%d", i, condition_list[i].left_attr.attribute_name, condition_list[i].right_attr.attribute_name, condition_list[i].left_is_attr);
+    //LOG_INFO("conditon-%d: left_attr:%s, rigth_attr:%s, left_is_attr:%d", i, condition_list[i].left_attr.attribute_name, condition_list[i].right_attr.attribute_name, condition_list[i].left_is_attr);
     if(condition_list[i].left_value.type == QUERY && condition_list[i].left_is_attr != 1){
       LOG_INFO("before convert left value, value.type = %d", condition_list[i].left_value.type);
       convert_value(db, condition_list[i].left_value);
@@ -895,7 +897,9 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
       LOG_INFO("after convert right value, value.type = %d", condition_list[i].right_value.type);
     }
   }
+  LOG_INFO("debug info, before set_conditions");
   update_stmt->set_conditions(condition_list, condition_num);
+  LOG_INFO("debug info, after set_conditions");
   rc = update_stmt->update_filter(db);
   if(rc != RC::SUCCESS){
     session_event->set_response("FAILURE\n");

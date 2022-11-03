@@ -40,7 +40,9 @@ public:
   std::vector<SetValue> values_list() const { return value_list_; }
   void conditions(Condition *conditions) {
     for(int i = 0; i < condition_num_; i++){
-      LOG_INFO("UpdateStmt: condition-%d, left_attr:%s, right_attr:%s", i, conditions_[i].left_attr.attribute_name, conditions_[i].right_attr.attribute_name);
+      LOG_INFO("UpdateStmt: condition-%d, left_attr:%s", i, conditions_[i].left_attr.attribute_name);
+      LOG_INFO("UpdateStmt: condition-%d, right_type:%d", i, conditions_[i].right_value.type);
+      //LOG_INFO("UpdateStmt: condition-%d, left_attr:%s, right_attr:%s", i, conditions_[i].left_attr.attribute_name, conditions_[i].right_attr.attribute_name);
       conditions[i] = conditions_[i];
     }
   }
