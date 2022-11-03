@@ -21,10 +21,11 @@ class IndexScanOperator : public Operator
 {
 public: 
   IndexScanOperator(const Table *table, Index *index,
-		    const TupleCell *left_cell, bool left_inclusive,
-		    const TupleCell *right_cell, bool right_inclusive);
+		    const char *left_user_key, bool left_inclusive,
+		    const char *right_user_key, bool right_inclusive,
+        int *attr_len, int attr_num);
 
-  virtual ~IndexScanOperator() = default;
+  virtual ~IndexScanOperator();
   
   RC open() override;
   RC next() override;
@@ -40,8 +41,10 @@ private:
   Record current_record_;
   RowTuple tuple_;
 
-  TupleCell left_cell_;
-  TupleCell right_cell_;
+  char* left_user_key_;
+  char* right_user_key_;
   bool left_inclusive_;
   bool right_inclusive_;
+  int attr_len_[MAX_NUM];
+  int attr_num_;
 };

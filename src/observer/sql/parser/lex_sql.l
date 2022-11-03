@@ -49,6 +49,7 @@ QUOTE            [\'\"]
 [Tt][Aa][Bb][Ll][Ee]                                 RETURN_TOKEN(TABLE);
 [Tt][Aa][Bb][Ll][Ee][Ss]                             RETURN_TOKEN(TABLES);
 [Ii][Nn][Dd][Ee][Xx]                                 RETURN_TOKEN(INDEX);
+[Uu][Nn][Ii][Qq][Uu][Ee]                             RETURN_TOKEN(UNIQUE);
 [Ii][Nn][Nn][Ee][Rr]					                       RETURN_TOKEN(INNER);
 [Jj][Oo][Ii][Nn]						                         RETURN_TOKEN(JOIN);
 [Oo][Nn]                                             RETURN_TOKEN(ON);
@@ -76,11 +77,11 @@ QUOTE            [\'\"]
 [Ii][Nn][Ff][Ii][Ll][Ee]                             RETURN_TOKEN(INFILE);
 [Nn][Oo][Tt]                                         RETURN_TOKEN(NOT);
 [Ll][Ii][Kk][Ee]                                     RETURN_TOKEN(LIKE);
-[Mm][Aa][Xx]                                         yylval->string=strdup(yytext); RETURN_TOKEN(MAX);
-[Mm][Ii][Nn]                                         yylval->string=strdup(yytext); RETURN_TOKEN(MIN);
-[Ss][Uu][Mm]                                         yylval->string=strdup(yytext); RETURN_TOKEN(SUM);
-[Cc][Oo][Uu][Nn][Tt]                                 yylval->string=strdup(yytext); RETURN_TOKEN(COUNT);
-[Aa][Vv][Gg]                                         yylval->string=strdup(yytext); RETURN_TOKEN(AVG);
+[Mm][Aa][Xx]                                         RETURN_TOKEN(MAX);
+[Mm][Ii][Nn]                                         RETURN_TOKEN(MIN);
+[Ss][Uu][Mm]                                         RETURN_TOKEN(SUM);
+[Cc][Oo][Uu][Nn][Tt]                                 RETURN_TOKEN(COUNT);
+[Aa][Vv][Gg]                                         RETURN_TOKEN(AVG);
 {ID}                                                 yylval->string=strdup(yytext); RETURN_TOKEN(ID);
 "("                                                  RETURN_TOKEN(LBRACE);
 ")"                                                  RETURN_TOKEN(RBRACE);

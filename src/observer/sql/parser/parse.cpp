@@ -324,23 +324,37 @@ void drop_table_destroy(DropTable *drop_table)
   drop_table->relation_name = nullptr;
 }
 
-void create_index_init(
-    CreateIndex *create_index, const char *index_name, const char *relation_name, const char *attr_name)
-{
-  create_index->index_name = strdup(index_name);
-  create_index->relation_name = strdup(relation_name);
-  create_index->attribute_name = strdup(attr_name);
+void create_show_index(ShowIndex *show_index, const char* relation_name) {
+  show_index->relation_name = strdup(relation_name);
 }
 
-void create_index_destroy(CreateIndex *create_index)
-{
+void create_index_init(CreateIndex *create_index, const char *index_name, 
+                       const char *relation_name, IndexType type) {
+  create_index->index_name = strdup(index_name);
+  create_index->relation_name = strdup(relation_name);
+  if(type == UNIQUE_INDEX) {
+    create_index->type = type;
+  } else if (create_index->attr_num == 1){
+    create_index->type = type;
+  } else {
+    create_index->type = MULTI_INDEX;
+  }
+}
+
+void create_index_append_attribute(CreateIndex *create_index, const char *attribute_name) {
+  create_index->attributes[create_index->attr_num++] = strdup(attribute_name);
+}
+
+void create_index_destroy(CreateIndex *create_index) {
+  for (size_t i = 0; i < create_index->attr_num; i++) {
+    free(create_index->attributes[i]);
+    create_index->attributes[i] = nullptr;
+  }
   free(create_index->index_name);
   free(create_index->relation_name);
-  free(create_index->attribute_name);
 
   create_index->index_name = nullptr;
   create_index->relation_name = nullptr;
-  create_index->attribute_name = nullptr;
 }
 
 void drop_index_init(DropIndex *drop_index, const char *index_name)
