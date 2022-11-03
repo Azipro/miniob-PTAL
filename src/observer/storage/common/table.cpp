@@ -30,6 +30,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/trx/trx.h"
 #include "storage/clog/clog.h"
 #include "util/date.h"
+#include "util/typecast.h"
 
 Table::~Table()
 {
@@ -737,6 +738,137 @@ RC Table::update_record(Trx *trx, Record *record, const Value *value, const char
     }
   }
   memcpy(record->data() + field->offset(), value->data, copy_len);
+  rc = record_handler_->update_record(record);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to update record (rid=%d.%d). rc=%d:%s",
+                record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+    return rc;
+  }
+
+  // if (trx != nullptr) {
+  //   rc = trx->update_record(this, record);
+    
+  //   CLogRecord *clog_record = nullptr;
+  //   rc = clog_manager_->clog_gen_record(CLogType::REDO_UPDATE, trx->get_current_id(), clog_record, name(), 0, record);
+  //   if (rc != RC::SUCCESS) {
+  //     LOG_ERROR("Failed to create a clog record. rc=%d:%s", rc, strrc(rc));
+  //     return rc;
+  //   }
+  //   rc = clog_manager_->clog_append_record(clog_record);
+  //   if (rc != RC::SUCCESS) {
+  //     return rc;
+  //   }
+  // }
+  return rc;
+}
+
+RC Table::convert_value(Value *value, AttrType dst_type){
+  RC rc = RC::SUCCESS;
+  if (value->type == dst_type) {
+    return rc;
+  } else {
+    const AttrType value_type = value->type;
+    if (dst_type == DATES) {
+      int32_t date = -1;
+      rc = string_to_date((char *)value->data, date);
+      if (rc != RC::SUCCESS) {
+        LOG_TRACE("string_to_date fail, data=%s", value->data);
+        return rc;
+      }
+      value_destroy((Value *)value);
+      value_init_date((Value *)value, date);
+    } else if (dst_type == INTS) {
+      if (value_type == FLOATS) {
+        int32_t val = -1;
+        val = float_to_integer(*(float *)value->data);
+        value_destroy((Value *)value);
+        value_init_integer((Value *)value, val);
+      } else if (value_type == CHARS) {
+        int32_t val = -1;
+        val = string_to_integer((char *)value->data);
+        value_destroy((Value *)value);
+        value_init_integer((Value *)value, val);
+      }
+    } else if (dst_type == FLOATS) {
+      if (value_type == INTS) {
+        float val = -1;
+        val = integer_to_float(*(int32_t *)value->data);
+        value_destroy((Value *)value);
+        value_init_float((Value *)value, val);
+      } else if (value_type == CHARS) {
+        float val = -1;
+        val = string_to_float((char *)value->data);
+        value_destroy((Value *)value);
+        value_init_float((Value *)value, val);
+      }
+    } else if (dst_type == CHARS) {
+      if (value_type == INTS) {
+        char *val = nullptr;
+        val = integer_to_string(*(int32_t *)value->data);
+        value_destroy((Value *)value);
+        value_init_string((Value *)value, val);
+      } else if (value_type == FLOATS) {
+        char *val = nullptr;
+        val = float_to_string(*(float *)value->data);
+        value_destroy((Value *)value);
+        value_init_string((Value *)value, val);
+      }
+    }
+    return rc;
+  }
+}
+
+RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_list)
+{
+  RC rc = RC::SUCCESS;
+  // TODO: 是否需要更新索引？
+  // rc = update_entry_of_indexes(record->data(), record->rid(), false); 
+  // if (rc != RC::SUCCESS) {
+  //   LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
+  //               record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+  //   return rc;
+  // } 
+  std::vector<int> offset_list, copy_len_list;
+  for(int i = 0; i < value_list.size(); i++){
+    const FieldMeta *field = table_meta_.field(value_list[i].attribute_name);
+    // 属性不存在
+    if (field == nullptr) {
+      LOG_WARN("Failed to update record: attribute [%s] does not exist", value_list[i].attribute_name);
+      return RC::INVALID_ARGUMENT;
+    }
+    int32_t date = -1;
+    if (value_list[i].value.type == CHARS && field->type() == DATES) {
+      rc = string_to_date((char *)value_list[i].value.data, date);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("Failed to convert chars to date");
+        return rc;
+      }
+      value_destroy((Value *)&value_list[i].value);
+      value_init_date((Value *)&value_list[i].value, date);
+    }
+    // 类型不匹配
+    if (field->type() != value_list[i].value.type) {
+      convert_value(&value_list[i].value, field->type());
+      if (field->type() != value_list[i].value.type) {
+        LOG_WARN("Failed to update record: type mismatch, field type: %d, value type: %d",
+            field->type(),
+            value_list[i].value.type);
+        return RC::INVALID_ARGUMENT;
+      }
+    }
+    size_t copy_len = field->len();
+    if (field->type() == CHARS) {
+      const size_t data_len = strlen((const char *)value_list[i].value.data);
+      if (copy_len > data_len) {
+        copy_len = data_len + 1;
+      }
+    }
+    offset_list.push_back(field->offset());
+    copy_len_list.push_back(copy_len);
+  }
+  for(int i = 0; i < value_list.size(); i++){
+    memcpy(record->data() + offset_list[i], value_list[i].value.data, copy_len_list[i]);
+  }
   rc = record_handler_->update_record(record);
   if (rc != RC::SUCCESS) {
     LOG_ERROR("Failed to update record (rid=%d.%d). rc=%d:%s",

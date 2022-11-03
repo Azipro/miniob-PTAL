@@ -30,6 +30,10 @@ RC UpdateOperator::open()
   }
 
   Table *table = update_stmt_->table();
+  std::vector<SetValue> value_list = update_stmt_->values_list();
+  for(int i = 0; i < value_list.size(); i++){
+    LOG_INFO("value, is_select: %d", value_list[i].value.type == QUERY);
+  }
   while (RC::SUCCESS == (rc = child->next())) {
     Tuple *tuple = child->current_tuple();
     if (nullptr == tuple) {
@@ -40,7 +44,7 @@ RC UpdateOperator::open()
     RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
     Record &record = row_tuple->record();
     // TODO: 处理事务和clog
-    rc = table->update_record(trx_, &record, update_stmt_->values(), update_stmt_->attribute_name());
+    rc = table->update_records(trx_, &record, value_list);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to update record: %s", strrc(rc));
       return rc;

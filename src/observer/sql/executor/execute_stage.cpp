@@ -517,6 +517,47 @@ RC ExecuteStage::do_select_table(SelectStmt *select_stmt, TupleSet *&magic_table
   return rc;
 }
 
+RC ExecuteStage::do_sub_query(Db *db, Query* query, std::vector<Value> &value_list){
+  Stmt *stmt = nullptr;
+  RC rc = Stmt::create_stmt(db, *query, stmt);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create stmt. rc=%d:%s", rc, strrc(rc));
+    return rc;
+  }
+  switch (query->flag) {
+    case SCF_SELECT: {
+      SelectStmt *select_stmt = (SelectStmt *)stmt;
+      TupleSet *magic_table = nullptr;
+      RC rc = RC::SUCCESS;
+      if (select_stmt->tables().size() == 1) {
+        rc = do_select_table(select_stmt, magic_table, false);
+      } else if (select_stmt->tables().size() > 1) {
+        rc = do_select_tables(select_stmt, magic_table, true);
+      } else {
+        LOG_WARN("select less than 1 tables is not supported");
+        return RC::UNIMPLENMENT;
+        ;
+      }
+      if (select_stmt->agg_num() > 0) {
+        rc = magic_table->get_agg_set(value_list, select_stmt->query_fields());
+      } else {
+        rc = magic_table->get_set(value_list, select_stmt->query_fields());
+      }
+      if (rc != RC::SUCCESS) {
+        return rc;
+      }
+      delete magic_table;
+      return rc;
+      break;
+    }
+    default: {
+      LOG_WARN("unimplenment query");
+      rc = RC::UNIMPLENMENT;
+      return rc;
+    }
+  }
+}
+
 RC ExecuteStage::do_select_tables(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables) {
   assert(select_stmt->tables().size() > 1);
   RC rc = RC::SUCCESS;
@@ -780,24 +821,48 @@ insert into Update_table_1 values(4, 'N3', 0, 1);
 select * from Update_table_1;
 UPDATE Update_table_1 SET t_name='N02' WHERE col1=0 AND col2=0;
 UPDATE Update_table_1 SET T_NAME='N02' WHERE COL1=0 AND COL2=0;
+
+create table t (id int, name char, col1 int, col2 int);
+insert into t values(1, '111', 1, 1);
+insert into t values(2, '222', 2, 2);
+select * from t;
+update t set col1 = 10;
+update t set col1 = 10, col2 = 20;
+update t set col1 = '1a' where id=1;
+
+update t set col1=(select col1 from t where t.id=2) where t.id=1;
+update t set col1=(select col1 from t where t.id=2) where t.id=1;
+update t set col1=(select col1 from t where id=2) where id=1;
+update t set col1=(select col1 from t) where id=1;
+update t set col2=(select count(id) from t) where id=1;
+update t set col2=(select max(id) from t) where id=1;
+update t set col1 = 1 where id=(select count(id) from t);
+update t set col1=(select count(id) from t), col2=(select count(id) from t) where id=1;
+update t set col1=(select count(id) from t), col2=(select max(id) from t) where id=1;
+update t set  col1=(select count(id) from t), col2=(select max(id) from t) where id=(select min(id) from t);
+update t set name=(select max(name) from t) where id=1;
+update t set col1=(select max(name) from t) where id=1;
 */
+
+RC  ExecuteStage::convert_value(Db *db, Value & value){
+  if(value.type != QUERY){
+    return RC::SUCCESS;
+  }else{
+    std::vector<Value> value_list;
+    do_sub_query(db, (Query *)value.data, value_list);
+    LOG_WARN("conver_value: value_list.length=%d", value_list.size());
+    if(value_list.size() != 1){
+      LOG_WARN("convert value failed, value_list.length=%d", value_list.size());
+      return RC::INVALID_ARGUMENT;
+    }else{
+      value = value_list[0];
+      return RC::SUCCESS;
+    }
+  }
+}
 
 RC ExecuteStage::do_update(SQLStageEvent *sql_event)
 {
-  // SessionEvent *session_event = sql_event->session_event();
-  // const Updates &update = sql_event ->query()->sstr.update;
-  // Db *db = session_event->session()->get_current_db();
-  // Session *session = session_event->session();
-  // Trx *trx = session->current_trx();
-  // CLogManager *clog_manager = db->get_clog_manager();
-  // // 不支持事务
-  // RC rc = db->update(update.relation_name, trx, update.attribute_name, &update.value, update.condition_num, update.conditions, -1);
-  // if (rc == RC::SUCCESS) {
-  //   session_event->set_response("SUCCESS\n");
-  // } else {
-  //   session_event->set_response("FAILURE\n");
-  // }
-  // redo
   RC rc = RC::SUCCESS;
   SessionEvent *session_event = sql_event->session_event();
   Session *session = session_event->session();
@@ -805,6 +870,44 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
   Db *db = session_event->session()->get_current_db();
   CLogManager *clog_manager = db->get_clog_manager();
   UpdateStmt *update_stmt = (UpdateStmt *)(sql_event->stmt());
+  std::vector<SetValue> value_list = update_stmt->values_list();
+  LOG_INFO("-----convert set value-----");
+  for(int i = 0; i < value_list.size(); i++){
+    if(value_list[i].value.type == QUERY){
+      LOG_INFO("before convert value, value.type = %d", value_list[i].value.type);
+      convert_value(db, value_list[i].value);
+      LOG_INFO("after convert value, value.type = %d", value_list[i].value.type);
+    }
+  }
+  LOG_INFO("-----convert condition-----");
+  update_stmt->set_value_list(value_list);
+  Condition condition_list[MAX_NUM];
+  LOG_INFO("debug info, before conditions");
+  update_stmt->conditions(condition_list);
+  LOG_INFO("debug info, after conditions");
+  int condition_num = update_stmt->condition_num();
+  LOG_INFO("condition_num=%d", condition_num);
+  for(int i = 0; i < condition_num; i++){
+    //LOG_INFO("conditon-%d: left_attr:%s, rigth_attr:%s, left_is_attr:%d", i, condition_list[i].left_attr.attribute_name, condition_list[i].right_attr.attribute_name, condition_list[i].left_is_attr);
+    if(condition_list[i].left_value.type == QUERY && condition_list[i].left_is_attr != 1){
+      LOG_INFO("before convert left value, value.type = %d", condition_list[i].left_value.type);
+      convert_value(db, condition_list[i].left_value);
+      LOG_INFO("after convert left value, value.type = %d", condition_list[i].left_value.type);
+    }
+    if(condition_list[i].right_value.type == QUERY && condition_list[i].right_is_attr != 1){
+      LOG_INFO("before convert right value, value.type = %d", condition_list[i].right_value.type);
+      convert_value(db, condition_list[i].right_value);
+      LOG_INFO("after convert right value, value.type = %d", condition_list[i].right_value.type);
+    }
+  }
+  LOG_INFO("debug info, before set_conditions");
+  update_stmt->set_conditions(condition_list, condition_num);
+  LOG_INFO("debug info, after set_conditions");
+  rc = update_stmt->update_filter(db);
+  if(rc != RC::SUCCESS){
+    session_event->set_response("FAILURE\n");
+    return rc;
+  }
   Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt());
   if (nullptr == scan_oper) {
     scan_oper = new TableScanOperator(update_stmt->table());

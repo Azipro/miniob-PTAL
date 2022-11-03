@@ -281,6 +281,98 @@ public:
     return RC::SUCCESS;
   }
 
+  RC get_set(std::vector<Value> &value_list, const std::vector<Field> &query_fields) const
+  {
+    std::vector<int> query_index(query_fields.size(), -1);
+    for (int i = 0 ; i < query_fields.size() ; ++ i) {
+      for (int j = 0 ; j < speces_.size() ; ++ j) {
+        const char *table_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->table_name();
+        const char *field_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->field_name();
+        if (0 == strcmp(query_fields[i].table_name(), table_name) && 0 == strcmp(query_fields[i].field_name(), field_name)) {
+          query_index[i] = j;
+          break;
+        }
+      }
+      if (query_index[i] == -1) {
+        LOG_ERROR("not match query field in tuple set.");
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+    }
+    TupleCell cell;
+    RC rc = RC::SUCCESS;
+    for (auto tuple : tuples_) {
+      for (auto i : query_index) {
+        rc = tuple.cell_at(i, cell);
+        if (rc != RC::SUCCESS) {
+          LOG_WARN("failed to fetch field of cell. index=%d, rc=%s", i, strrc(rc));
+          break;
+        }
+        Value value;
+        value.type = cell.attr_type();
+        value.data = malloc(cell.length());
+        memcpy(value.data, cell.data(), cell.length());
+        value_list.push_back(value);
+      }
+    }
+    return RC::SUCCESS;
+  }
+
+  RC get_agg_set(std::vector<Value> &value_list, const std::vector<Field> &query_fields) {
+    std::vector<int> query_index(query_fields.size(), -1);
+    for (int i = 0 ; i < query_fields.size() ; ++ i) {
+      for (int j = 0 ; j < speces_.size() ; ++ j) {
+        const char *table_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->table_name();
+        const char *field_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->field_name();
+        if (0 == strcmp(query_fields[i].table_name(), table_name) && 0 == strcmp(query_fields[i].field_name(), field_name)) {
+          query_index[i] = j;
+          break;
+        }
+      }
+      if (query_index[i] == -1) {
+        LOG_ERROR("not match query field in tuple set.");
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+    }
+
+    TupleCell cell;
+    RC rc = RC::SUCCESS;
+    bool first_field;
+    first_field = true;
+    for (int i = 0 ; i < query_fields.size() ; ++ i) {
+      TupleCell cell;
+      switch (query_fields[i].agg_type()) {
+        case AGG_MAX:
+          rc = max_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        case AGG_MIN:
+          rc = min_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        case AGG_SUM:
+          rc = sum_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        case AGG_COUNT:
+          rc = count_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        case AGG_AVG:
+          rc = avg_cell(query_index[i], cell);
+          LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+          break;
+        default:
+          LOG_WARN("unknown aggregation function");
+          return RC::INVALID_ARGUMENT;
+      }
+      Value value;
+      value.type = cell.attr_type();
+      value.data = malloc(cell.length());
+      memcpy(value.data, cell.data(), cell.length());
+      value_list.push_back(value);
+    }
+    return RC::SUCCESS;
+  }
 public:
   void set_speces(const std::vector<TupleCellSpec*> &speces) { speces_ = speces; }
   void set_tuples(const std::vector<MagicTuple> &tuples) { tuples_ = tuples; }
