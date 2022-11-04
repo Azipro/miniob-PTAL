@@ -1068,6 +1068,7 @@ select * from t;
 update t set col1 = 10;
 update t set col1 = 10, col2 = 20;
 update t set col1 = '1a' where id=1;
+update t set col1 = '1a' where xxx=1;
 
 update t set col1=(select col1 from t where t.id=2) where t.id=1;
 update t set col1=(select col1 from t where t.id=2) where t.id=1;
@@ -1162,6 +1163,10 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
       session_event->set_response("FAILURE\n");
       return rc;
     }
+  }
+  if(update_stmt->filter_stmt() == nullptr){
+    session_event->set_response("FAILURE\n");
+    return RC::INVALID_ARGUMENT;
   }
   // Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt(), update_stmt->table());
   // if (nullptr == scan_oper) {

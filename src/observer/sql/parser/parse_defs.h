@@ -63,15 +63,15 @@ typedef enum {
 //属性值类型
 typedef enum
 {
-  VALUELIST,
+  QUERY,
   UNDEFINED,
+  VALUELIST,
   CHARS,
   INTS,
   FLOATS,
   TEXTS,
   DATES,
   NULL_,
-  QUERY,
 } AttrType;
 
 // 索引类型
