@@ -941,7 +941,7 @@ RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_
       return RC::INVALID_ARGUMENT;
     }
     // 类型不匹配
-    if (field->type() != value_list[i].value.type) {
+    if (field->type() != value_list[i].value.type && value_list[i].value.type != NULL_) {
       convert_value(&value_list[i].value, field->type());
       if (field->type() != value_list[i].value.type) {
         LOG_WARN("Failed to update record: type mismatch, field type: %d, value type: %d",
@@ -951,10 +951,21 @@ RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_
       }
     }
     size_t copy_len = field->len();
-    if (field->type() == CHARS) {
-      const size_t data_len = strlen((const char *)value_list[i].value.data);
-      if (copy_len > data_len) {
-        copy_len = data_len + 1;
+    if (value_list[i].value.type == NULL_) {
+      void *null_value = malloc(copy_len);
+      null_data(null_value, copy_len);
+      memcpy(record + field->offset(), null_value, copy_len);
+      
+      if (value_list[i].value.data != nullptr) {
+        free(value_list[i].value.data);
+      }
+      value_list[i].value.data = null_value;
+    } else {
+      if (field->type() == CHARS) {
+        const size_t data_len = strlen((const char *)value_list[i].value.data);
+        if (copy_len > data_len) {
+          copy_len = data_len + 1;
+        }
       }
     }
     offset_list.push_back(field->offset());
