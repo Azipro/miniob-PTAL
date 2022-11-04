@@ -55,6 +55,8 @@ protected:
   RC do_select_tables(SelectStmt *select_stmt, TupleSet *&magic_table, bool is_tables);
   RC do_sub_query(Db *db, Query* query, std::vector<Value> &value_list);
   RC convert_value(Db *db, Value & value);
+  bool update_value_list(Db *db, std::vector<SetValue> &value_list);
+  bool update_conditions(Db *db, Condition* condition_list, int conditions_num);
   RC do_insert(SQLStageEvent *sql_event);
   RC do_update(SQLStageEvent *sql_event);
   RC do_delete(SQLStageEvent *sql_event);

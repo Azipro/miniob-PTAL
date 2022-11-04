@@ -122,7 +122,7 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
       LOG_ERROR("Must be \"is null or is not null\".");
       return RC::SCHEMA_FIELD_TYPE_MISMATCH;
     }
-    
+
     // Table *table = nullptr;
     // const FieldMeta *field = nullptr;
     // rc = get_table_and_field(db, default_table, tables, condition.left_attr, table, field);
@@ -218,11 +218,19 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     return RC::INVALID_ARGUMENT;
   }
 
-  if (left_type == right_type || (left_type == DATES && right_type == NULL_) || (right_type == DATES && left_type == NULL_) || 
+  filter_unit = new FilterUnit;
+  if (left_type == right_type || (left_type == DATES && right_type == NULL_) || (right_type == DATES && left_type == NULL_) ||
       (left_type == TEXTS && (right_type == CHARS || right_type == NULL_)) || (right_type == TEXTS && (left_type == CHARS || left_type == NULL_)) ||
       ((left_type == INTS || left_type == FLOATS || left_type == CHARS || left_type == NULL_) &&
           (right_type == INTS || right_type == FLOATS || right_type == CHARS || right_type == NULL_))) {
-    filter_unit = new FilterUnit;
+    filter_unit->set_comp(comp);
+    filter_unit->set_left(left);
+    filter_unit->set_right(right);
+  }else if(comp == OP_EXISTS || comp == OP_NOT_EXISTS){
+    filter_unit->set_comp(comp);
+    filter_unit->set_left(left);
+    filter_unit->set_right(right);
+  } else if(comp == OP_IN || comp == OP_NOT_IN) {
     filter_unit->set_comp(comp);
     filter_unit->set_left(left);
     filter_unit->set_right(right);

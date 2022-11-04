@@ -53,9 +53,24 @@ public:
   void set_order_fields(const std::vector<OrderField> &order_fields) { order_fields_ = order_fields; }
   void set_group_fields(const std::vector<GroupField> &group_fields) { group_fields_ = group_fields; }
   void set_having_fields(const std::vector<HavingField> &having_fields) { having_fields_ = having_fields; }
+  void set_conditions(const Condition *conditions, int condition_num) {
+    condition_num_ = condition_num;
+    for(int i = 0; i < condition_num; i++){
+      conditions_[i] = conditions[i];
+    }
+  }
+  int condition_num(){return condition_num_;}
+  void conditions(Condition *conditions) {
+    for(int i = 0; i < condition_num_; i++){
+     conditions[i] = conditions_[i];
+    }
+  }
+  RC update_filter(Db *db);
 
 private:
   std::vector<Field> query_fields_;
+  Condition conditions_[MAX_NUM];
+  int condition_num_;
   std::vector<Table *> tables_;
   FilterStmt *filter_stmt_ = nullptr;
   size_t agg_num_ = 0;

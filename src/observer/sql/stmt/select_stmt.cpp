@@ -179,8 +179,10 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
   RC rc = FilterStmt::create(db, default_table, &table_map,
            select_sql.conditions, select_sql.condition_num, filter_stmt);
   if (rc != RC::SUCCESS) {
+    // 后续可能会更新filter
+    rc = RC::SUCCESS;
     LOG_WARN("cannot construct filter stmt");
-    return rc;
+    // return rc;
   }
 
   // collect order fields in `order by` statement
@@ -340,9 +342,30 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
   select_stmt->query_fields_.swap(query_fields);
   select_stmt->filter_stmt_ = filter_stmt;
   select_stmt->agg_num_ = select_sql.agg_num;
+  select_stmt->set_conditions(select_sql.conditions, select_sql.condition_num);
   select_stmt->order_fields_.swap(order_fields);
   select_stmt->group_fields_.swap(group_fields);
   select_stmt->having_fields_.swap(having_fields);
   stmt = select_stmt;
   return RC::SUCCESS;
 }
+
+RC SelectStmt::update_filter(Db *db){
+  Table *default_table = nullptr;
+  if (tables_.size() == 1) {
+    default_table = tables_[0];
+  }
+  std::unordered_map<std::string, Table *> table_map;
+  table_map.insert(std::pair<std::string, Table *>(std::string(default_table->name()), default_table));
+
+  FilterStmt *filter_stmt = nullptr;
+  RC rc = FilterStmt::create(db, default_table, &table_map,
+			     conditions_, condition_num_, filter_stmt);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
+    return rc;
+  }
+  filter_stmt_ = filter_stmt;
+  return rc;
+}
+

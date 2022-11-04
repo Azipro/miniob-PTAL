@@ -53,12 +53,17 @@ typedef enum {
   OP_NOT_LIKE,  //"NOT LIKE"  7
   EQUAL_IS,     //"IS"      8
   NOT_EQUAL_IS, //"IS NOT"  9
+  OP_IN,
+  OP_NOT_IN,
+  OP_EXISTS,
+  OP_NOT_EXISTS,
   NO_OP
 } CompOp;
 
 //属性值类型
 typedef enum
 {
+  VALUELIST,
   UNDEFINED,
   CHARS,
   INTS,
@@ -70,10 +75,10 @@ typedef enum
 } AttrType;
 
 // 索引类型
-typedef enum 
-{ 
-  DEFAULT_INDEX, 
-  UNIQUE_INDEX, 
+typedef enum
+{
+  DEFAULT_INDEX,
+  UNIQUE_INDEX,
   MULTI_INDEX, // 暂时没用
 } IndexType;
 
@@ -87,6 +92,11 @@ typedef struct _Text{
   int file_desc;
   int text_len;
 } Text;
+
+typedef struct _ValueList{
+  Value values[MAX_NUM];
+  int length;
+} ValueList;
 
 typedef struct _Condition {
   int left_is_attr;    // TRUE if left-hand side is an attribute
@@ -281,6 +291,7 @@ void value_init_string(Value *value, const char *v);
 void value_init_query(Value *value, Query *query);
 void value_init_date(Value *value, int32_t date);
 void value_init_null(Value *value);
+void value_init_undefined(Value *value);
 void value_destroy(Value *value);
 
 void condition_init(Condition *condition, CompOp comp, int left_is_attr, RelAttr *left_attr, Value *left_value,

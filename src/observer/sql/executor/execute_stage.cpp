@@ -322,7 +322,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
   // 如果是多列索引，这里的处理需要更复杂。
   // 这里的查找规则是比较简单的，就是尽量找到使用相等比较的索引
   // 如果没有就找范围比较的，但是直接排除不等比较的索引查询. (你知道为什么?)
-  
+
   std::vector<const FilterUnit*> better_filter;
   const FilterUnit *better_filter_single = nullptr;
   const std::vector<Index *>& indexes = table->indexes();
@@ -341,6 +341,10 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
 
         if (filter_unit->comp() == NOT_EQUAL || filter_unit->comp() == NOT_EQUAL_IS) {
           continue;
+        }
+        // exists 不使用index_scan
+        if (filter_unit->comp() == OP_EXISTS || filter_unit->comp() == OP_NOT_EXISTS){
+          return nullptr;
         }
         Expression *left = filter_unit->left();
         Expression *right = filter_unit->right();
@@ -380,7 +384,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
         }
       }
     }
-    
+
     if (better_filter_tmp.size() == fields_meta.size()) { // 找到多列索引, 尽可能匹配最长的索引
       if (better_filter.size() < better_filter_tmp.size()){
         better_filter = better_filter_tmp;
@@ -388,7 +392,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
       }
     }
   }
-  
+
 
   if (better_filter_single == nullptr && better_filter.size() == 0) {
     return nullptr;
@@ -450,7 +454,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
       } else {
         attr_len[i] = 4; // 其他类型固定4bytes
       }
-    
+
       char *tmp = user_key;
       user_key = (char*)malloc(user_key_offest + attr_len[i]);
       memmove(user_key, tmp, user_key_offest);
@@ -480,7 +484,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
         }
       }
     }
-    
+
     FieldExpr &left_field_expr = *(FieldExpr *)left;
     ValueExpr &right_value_expr = *(ValueExpr *)right;
     TupleCell value;
@@ -495,7 +499,7 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
     } else {
       attr_len[0] = 4; // 其他类型固定4bytes
     }
-    
+
     user_key = (char*)malloc(attr_len[0]);
     memmove(user_key, value.data(), attr_len[0]);
 
@@ -557,12 +561,38 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
   return oper;
 }
 
+/*
+select * from t where id = (select count(id) from t);
+select * from t where id > (select min(id) from t);
+select * from t where id <= (select max(id) from t);
+select * from t where id in (select min(id) from t);
+select * from t where id in (select max(id) from t);
+select * from t where name in (select max(name) from t);
+select * from t where name in (select max(id) from t);
+select * from t where id not in (select max(id) from t);
+select * from t where exists (select max(id) from t);
+select * from t where not exists (select max(id) from t);
+select * from t where exists (select id from t where id = 4);
+*/
 RC ExecuteStage::do_select(SQLStageEvent *sql_event)
 {
   SelectStmt *select_stmt = (SelectStmt *)(sql_event->stmt());
   SessionEvent *session_event = sql_event->session_event();
   TupleSet *magic_table = nullptr;
+  Db *db = session_event->session()->get_current_db();
   RC rc = RC::SUCCESS;
+  // 更新conditons
+  Condition condition_list[MAX_NUM];
+  select_stmt->conditions(condition_list);
+  int condition_num = select_stmt->condition_num();
+  if (update_conditions(db, condition_list, condition_num)) {
+    select_stmt->set_conditions(condition_list, condition_num);
+    rc = select_stmt->update_filter(db);
+    if (rc != RC::SUCCESS) {
+      session_event->set_response("FAILURE\n");
+      return rc;
+    }
+  }
   if (select_stmt->tables().size() == 1) {
     rc = do_select_table(select_stmt, magic_table, false);
   } else if (select_stmt->tables().size() > 1) {
@@ -1016,6 +1046,7 @@ UPDATE Update_table_1 SET T_NAME='N02' WHERE COL1=0 AND COL2=0;
 create table t (id int, name char, col1 int, col2 int);
 insert into t values(1, '111', 1, 1);
 insert into t values(2, '222', 2, 2);
+insert into t values(3, '333', 3, 3);
 select * from t;
 update t set col1 = 10;
 update t set col1 = 10, col2 = 20;
@@ -1035,21 +1066,56 @@ update t set name=(select max(name) from t) where id=1;
 update t set col1=(select max(name) from t) where id=1;
 */
 
-RC  ExecuteStage::convert_value(Db *db, Value & value){
+RC ExecuteStage::convert_value(Db *db, Value & value){
   if(value.type != QUERY){
     return RC::SUCCESS;
   }else{
     std::vector<Value> value_list;
     do_sub_query(db, (Query *)value.data, value_list);
-    LOG_WARN("conver_value: value_list.length=%d", value_list.size());
-    if(value_list.size() != 1){
-      LOG_WARN("convert value failed, value_list.length=%d", value_list.size());
+    if(value_list.size() == 0){
+      value_init_undefined(&value);
       return RC::INVALID_ARGUMENT;
-    }else{
+    }else if(value_list.size() == 1){
       value = value_list[0];
+      return RC::SUCCESS;
+    }else{
+      value.type = VALUELIST;
+      ValueList* list = (ValueList*)malloc(sizeof(ValueList));
+      memset(list, 0, sizeof(*list));
+      list->length = value_list.size();
+      for(int i = 0; i < value_list.size(); i++){
+        list->values[i] = value_list[i];
+      }
+      value.data = list;
       return RC::SUCCESS;
     }
   }
+}
+
+bool ExecuteStage::update_value_list(Db *db, std::vector<SetValue> &value_list){
+  bool hasUpdate = false;
+  for(int i = 0; i < value_list.size(); i++){
+    if(value_list[i].value.type == QUERY){
+      convert_value(db, value_list[i].value);
+      hasUpdate = true;
+    }
+  }
+  return hasUpdate;
+}
+
+bool ExecuteStage::update_conditions(Db *db, Condition* condition_list, int conditions_num){
+  bool hasUpdate = false;
+  for(int i = 0; i < conditions_num; i++){
+    if(condition_list[i].left_value.type == QUERY && condition_list[i].left_is_attr != 1){
+      hasUpdate = true;
+      convert_value(db, condition_list[i].left_value);
+    }
+    if(condition_list[i].right_value.type == QUERY && condition_list[i].right_is_attr != 1){
+      convert_value(db, condition_list[i].right_value);
+      hasUpdate = true;
+    }
+  }
+  return hasUpdate;
 }
 
 RC ExecuteStage::do_update(SQLStageEvent *sql_event)
@@ -1062,42 +1128,21 @@ RC ExecuteStage::do_update(SQLStageEvent *sql_event)
   CLogManager *clog_manager = db->get_clog_manager();
   UpdateStmt *update_stmt = (UpdateStmt *)(sql_event->stmt());
   std::vector<SetValue> value_list = update_stmt->values_list();
-  LOG_INFO("-----convert set value-----");
-  for(int i = 0; i < value_list.size(); i++){
-    if(value_list[i].value.type == QUERY){
-      LOG_INFO("before convert value, value.type = %d", value_list[i].value.type);
-      convert_value(db, value_list[i].value);
-      LOG_INFO("after convert value, value.type = %d", value_list[i].value.type);
-    }
+  // 更新set value
+  if(update_value_list(db, value_list)){
+    update_stmt->set_value_list(value_list);
   }
-  LOG_INFO("-----convert condition-----");
-  update_stmt->set_value_list(value_list);
+  // 更新conditons
   Condition condition_list[MAX_NUM];
-  LOG_INFO("debug info, before conditions");
   update_stmt->conditions(condition_list);
-  LOG_INFO("debug info, after conditions");
   int condition_num = update_stmt->condition_num();
-  LOG_INFO("condition_num=%d", condition_num);
-  for(int i = 0; i < condition_num; i++){
-    //LOG_INFO("conditon-%d: left_attr:%s, rigth_attr:%s, left_is_attr:%d", i, condition_list[i].left_attr.attribute_name, condition_list[i].right_attr.attribute_name, condition_list[i].left_is_attr);
-    if(condition_list[i].left_value.type == QUERY && condition_list[i].left_is_attr != 1){
-      LOG_INFO("before convert left value, value.type = %d", condition_list[i].left_value.type);
-      convert_value(db, condition_list[i].left_value);
-      LOG_INFO("after convert left value, value.type = %d", condition_list[i].left_value.type);
+  if (update_conditions(db, condition_list, condition_num)) {
+    update_stmt->set_conditions(condition_list, condition_num);
+    rc = update_stmt->update_filter(db);
+    if (rc != RC::SUCCESS) {
+      session_event->set_response("FAILURE\n");
+      return rc;
     }
-    if(condition_list[i].right_value.type == QUERY && condition_list[i].right_is_attr != 1){
-      LOG_INFO("before convert right value, value.type = %d", condition_list[i].right_value.type);
-      convert_value(db, condition_list[i].right_value);
-      LOG_INFO("after convert right value, value.type = %d", condition_list[i].right_value.type);
-    }
-  }
-  LOG_INFO("debug info, before set_conditions");
-  update_stmt->set_conditions(condition_list, condition_num);
-  LOG_INFO("debug info, after set_conditions");
-  rc = update_stmt->update_filter(db);
-  if(rc != RC::SUCCESS){
-    session_event->set_response("FAILURE\n");
-    return rc;
   }
   // Operator *scan_oper = try_to_create_index_scan_operator(update_stmt->filter_stmt(), update_stmt->table());
   // if (nullptr == scan_oper) {

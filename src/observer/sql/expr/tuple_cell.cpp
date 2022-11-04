@@ -105,6 +105,18 @@ int TupleCell::compare(const TupleCell &other) const
     Text *t = (Text*)other.data_;
     std::string text = text_to_string(t);
     return compare_string(this->data_, this->length_, (void*)text.c_str(), t->text_len);
+  } else if(other.attr_type_ == VALUELIST){
+    ValueList* list = (ValueList*)other.data_;
+    if(list != nullptr){
+      for(int i = 0; i < list->length; i++){
+        const TupleCell tmp(list->values[i].type, (char *)list->values[i].data);
+        if(this->compare(tmp) == 0){
+          return 0;
+        }
+      }
+    }else{
+      return -1;
+    }
   }
   LOG_WARN("not supported");
   return -1; // TODO return rc?

@@ -119,6 +119,13 @@ void value_init_null(Value *value){
   value->type = NULL_;
   value->data = malloc(4);
 }
+void value_init_undefined(Value *value)
+{
+  int v = 0;
+  value->type = UNDEFINED;
+  value->data = malloc(sizeof(v));
+  memcpy(value->data, &v, sizeof(v));
+}
 void value_destroy(Value *value)
 {
   value->type = UNDEFINED;
@@ -430,7 +437,7 @@ void create_show_index(ShowIndex *show_index, const char* relation_name) {
   show_index->relation_name = strdup(relation_name);
 }
 
-void create_index_init(CreateIndex *create_index, const char *index_name, 
+void create_index_init(CreateIndex *create_index, const char *index_name,
                        const char *relation_name, IndexType type) {
   create_index->index_name = strdup(index_name);
   create_index->relation_name = strdup(relation_name);

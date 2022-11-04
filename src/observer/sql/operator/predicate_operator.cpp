@@ -128,6 +128,18 @@ bool PredicateOperator::do_predicate(RowTuple &tuple)
     case NOT_EQUAL_IS: {
       filter_result = (left_cell.attr_type() != NULL_);;
     } break;
+    case OP_IN:{
+      filter_result = (compare == 0);
+    } break;
+    case OP_NOT_IN:{
+      filter_result = (compare != 0);
+    } break;
+    case OP_EXISTS:{
+      filter_result = (left_cell.attr_type() != UNDEFINED);
+    } break;
+    case OP_NOT_EXISTS:{
+      filter_result = (left_cell.attr_type() == UNDEFINED);
+    } break;
     default: {
       LOG_WARN("invalid compare type: %d", comp);
     } break;

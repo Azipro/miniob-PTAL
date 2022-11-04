@@ -117,6 +117,8 @@ ParserContext *get_context(yyscan_t scanner)
         LE
         GE
         NE
+		IN
+		EXISTS
 		IS
         LIKE
         MAX
@@ -231,7 +233,7 @@ show_indexes:
 	SHOW INDEX FROM ID SEMICOLON {
 	  CONTEXT->ssql->flag = SCF_SHOW_INDEXES;
 	  create_show_index(&CONTEXT->ssql->sstr.show_index, $4);
-	}	
+	}
 	;
 
 desc_table:
@@ -242,7 +244,7 @@ desc_table:
     ;
 
 create_index:		/*create index 语句的语法解析树*/
-    CREATE INDEX ID ON ID LBRACE ID index_attr_list RBRACE SEMICOLON 
+    CREATE INDEX ID ON ID LBRACE ID index_attr_list RBRACE SEMICOLON
 		{
 			CONTEXT->ssql->flag = SCF_CREATE_INDEX;//"create_index";
 			create_index_append_attribute(&CONTEXT->ssql->sstr.create_index, $7);
@@ -324,7 +326,7 @@ type:
        | DATE_T { $$=DATES; }
 	   | TEXT_T { $$=TEXTS; }
        ;
-is_null: 
+is_null:
 	/* empty */{
 		CONTEXT->nullable = 0;
 	}
@@ -415,7 +417,7 @@ value:
 		value_init_null(&CONTEXT->values[CONTEXT->value_length++]);
 	}
 	;
-    
+
 delete:		/*  delete 语句的语法解析树*/
     DELETE FROM ID where SEMICOLON 
 		{
@@ -1009,6 +1011,27 @@ condition:
 			// $$->right_attr.relation_name=$5;
 			// $$->right_attr.attribute_name=$7;
     }
+	| EXISTS value
+	{
+		CONTEXT->comp = OP_EXISTS;
+		Value *left_value = &CONTEXT->values[CONTEXT->value_length - 1];
+		// right_value不使用，随意初始化（防止段错误）
+		Value *right_value = (Value*)malloc(sizeof(Value));
+		value_init_undefined(right_value);
+		Condition condition;
+		condition_init(&condition, CONTEXT->comp, 0, NULL, left_value, 0, NULL, right_value);
+		CONTEXT->conditions[CONTEXT->condition_length++] = condition;
+	}
+	| NOT EXISTS value
+	{
+		CONTEXT->comp = OP_NOT_EXISTS;
+		Value *left_value = &CONTEXT->values[CONTEXT->value_length - 1];
+		Value *right_value = (Value*)malloc(sizeof(Value));
+		value_init_undefined(right_value);
+		Condition condition;
+		condition_init(&condition, CONTEXT->comp, 0, NULL, left_value, 0, NULL, right_value);
+		CONTEXT->conditions[CONTEXT->condition_length++] = condition;
+	}
     ;
 
 sub_where:
@@ -1198,6 +1221,8 @@ comOp:
     | NE { CONTEXT->comp = NOT_EQUAL; }
     | LIKE 	   { CONTEXT->comp = OP_LIKE; }
     | NOT LIKE { CONTEXT->comp = OP_NOT_LIKE; }
+	| IN {CONTEXT->comp = OP_IN;}
+	| NOT IN {CONTEXT->comp = OP_NOT_IN;}
 	| IS       { CONTEXT->comp = EQUAL_IS; }
 	| IS NOT   { CONTEXT->comp = NOT_EQUAL_IS; }
     ;
