@@ -954,11 +954,11 @@ RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_
     if (value_list[i].value.type == NULL_) {
       void *null_value = malloc(copy_len);
       null_data(null_value, copy_len);
-      memcpy(record + field->offset(), null_value, copy_len);
       
-      if (value_list[i].value.data != nullptr) {
-        free(value_list[i].value.data);
-      }
+      // if (value_list[i].value.data != nullptr) {
+      //   free(value_list[i].value.data);
+      //   value_list[i].value.data = nullptr;
+      // }
       value_list[i].value.data = null_value;
     } else {
       if (field->type() == CHARS) {
