@@ -92,6 +92,7 @@ ParserContext *get_context(yyscan_t scanner)
         STRING_T
         FLOAT_T
         DATE_T
+		TEXT_T
         HELP
         EXIT
         DOT //QUOTE
@@ -300,7 +301,11 @@ attr_def:
     |ID_get type is_null
 		{
 			AttrInfo attribute;
-			attr_info_init(&attribute, CONTEXT->id, $2, 4, CONTEXT->nullable);
+			if ($2 != TEXTS) {
+				attr_info_init(&attribute, CONTEXT->id, $2, 4, CONTEXT->nullable);
+			} else {
+				attr_info_init(&attribute, CONTEXT->id, $2, 8, CONTEXT->nullable);
+			}
 			create_table_append_attribute(&CONTEXT->ssql->sstr.create_table, &attribute);
 			// CONTEXT->ssql->sstr.create_table.attributes[CONTEXT->value_length].name=(char*)malloc(sizeof(char));
 			// strcpy(CONTEXT->ssql->sstr.create_table.attributes[CONTEXT->value_length].name, CONTEXT->id); 
@@ -317,6 +322,7 @@ type:
        | STRING_T { $$=CHARS; }
        | FLOAT_T { $$=FLOATS; }
        | DATE_T { $$=DATES; }
+	   | TEXT_T { $$=TEXTS; }
        ;
 is_null: 
 	/* empty */{

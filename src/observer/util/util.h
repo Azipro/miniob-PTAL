@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include <string>
+#include "sql/parser/parse_defs.h"
 
 std::string double2string(double v);
 
@@ -23,3 +24,4 @@ bool like(const char * s, const char * p, int len);
 bool is_number(const char * s);
 void null_data(void *&data, size_t bytes);
 bool is_null(const char *data, size_t len);
+std::string text_to_string(Text *text);

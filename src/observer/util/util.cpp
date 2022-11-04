@@ -76,3 +76,14 @@ bool is_null(const char *data, size_t len) {
   free(null_cell_data);
   return false;
 }
+
+std::string text_to_string(Text *text)
+{
+  lseek(text->file_desc, 0, SEEK_SET);
+  void* buf = malloc(text->text_len + 1);
+  read(text->file_desc, buf, text->text_len);
+  ((char*)buf)[text->text_len] = '\0';
+  std::string o((char*)buf); 
+  free(buf);
+  return o;
+}

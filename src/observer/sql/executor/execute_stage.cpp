@@ -617,6 +617,8 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
   if (rc != RC::SUCCESS) {
     return rc;
   }
+
+  LOG_INFO("---------------Azi: select end.---------------");
   session_event->set_response(ss.str());
   delete magic_table;
   return rc;
@@ -1160,6 +1162,14 @@ RC ExecuteStage::do_delete(SQLStageEvent *sql_event)
   delete_oper.add_child(&pred_oper);
 
   RC rc = delete_oper.open();
+
+  if (rc != RC::RECORD_EOF) {
+    LOG_WARN("something wrong while iterate operator. rc=%s", strrc(rc));
+    LOG_INFO("close DeleteOperator, rc = %s", strrc(delete_oper.close()));
+  } else {
+    rc = delete_oper.close();
+  }
+
   if (rc != RC::SUCCESS) {
     session_event->set_response("FAILURE\n");
   } else {

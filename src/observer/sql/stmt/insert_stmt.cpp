@@ -67,6 +67,15 @@ RC InsertStmt::create(Db *db, const Inserts &inserts, Stmt *&stmt)
             return RC::SCHEMA_FIELD_TYPE_MISMATCH;
           }
         }
+        if (field_type == TEXTS) {
+          if (value_type == CHARS) {
+            continue;
+          } else {
+            LOG_ERROR("field type is TEXTS. table=%s, field=%s, field type=%d, value_type=%d",
+                table_name, field_meta->name(), field_type, value_type);
+            return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+          }
+        }
         if (field_type == DATES) {
           int32_t date = -1;
           RC rc = string_to_date((char*)values[i].data, date);

@@ -102,6 +102,7 @@ void ResolveStage::handle_event(StageEvent *event)
   }
 
   Query *query = sql_event->query();
+  LOG_INFO("-------------------Azi: begin to create stmt.-------------------");
   Stmt *stmt = nullptr;
   RC rc = Stmt::create_stmt(db, *query, stmt);
   if (rc != RC::SUCCESS && rc != RC::UNIMPLENMENT) {

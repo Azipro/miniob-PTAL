@@ -808,6 +808,24 @@ private:
       cell.set_data(data);
       cell.set_type(FLOATS);
       cell.set_length(sizeof(float));
+    } else if (attr_type == TEXTS) {
+      Text *t = (Text*)cell.data();
+      std::string text = text_to_string(t);
+
+      float n = string_to_float(text.c_str());
+      for (int i = first_not_null; i < tuples_.size(); ++i) {
+        TupleCell cell2;
+        tuples_[i].cell_at(j, cell2);
+        if (cell2.attr_type() == NULL_) continue;
+        t = (Text*)cell2.data();
+        text = text_to_string(t);
+        n += string_to_float(text.c_str());
+      }
+      char * data = (char * )malloc(sizeof(float));
+      memcpy(data, (char *)&n, sizeof(float));
+      cell.set_data(data);
+      cell.set_type(FLOATS);
+      cell.set_length(sizeof(float));
     } else { // NULL
       // 无需处理
     }
@@ -1106,12 +1124,24 @@ bool tuple_cell_comp(TupleCell &left, TupleCell &right, CompOp comp) {
     filter_result = (compare > 0);
   } break;
   case OP_LIKE: {
-    filter_result = like(left.data(), right.data(), left.length());
-    LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left.data(), right.data(), filter_result);
+    if (left.attr_type() == TEXTS) { // 前面过滤了右边不为CHARS的情况
+      Text *t = (Text*)left.data();
+      std::string text = text_to_string(t);
+      filter_result = like(text.c_str(), right.data(), t->text_len);
+    } else {
+      filter_result = like(left.data(), right.data(), left.length());
+      LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left.data(), right.data(), filter_result);
+    }
   } break;
   case OP_NOT_LIKE: {
-    filter_result = !like(left.data(), right.data(), left.length());
-    LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left.data(), right.data(), filter_result);
+    if (left.attr_type() == TEXTS) {
+      Text *t = (Text*)left.data();
+      std::string text = text_to_string(t);
+      filter_result = !like(text.c_str(), right.data(), t->text_len);
+    } else {
+      filter_result = !like(left.data(), right.data(), left.length());
+      LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left.data(), right.data(), filter_result);
+    }
   } break;
   case EQUAL_IS: {
       filter_result = (left.attr_type() == NULL_);

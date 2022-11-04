@@ -92,6 +92,7 @@ RC TableMeta::init(const char *name, int field_num, const AttrInfo attributes[])
   }
 
   record_size_ = field_offset;
+  LOG_INFO("-------------------Azi: record_size_ = %d -------------------", record_size_);
 
   name_ = name;
   LOG_INFO("Sussessfully initialized table meta. table name=%s", name);

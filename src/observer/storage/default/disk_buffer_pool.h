@@ -288,6 +288,8 @@ public:
    * 回放日志时处理page0中已被认定为不存在的page
    */
   RC recover_page(PageNum page_num);
+
+  RC storage_text(int &file_desc, int &text_len, char* data, const char* file);
 protected:
 protected:
   RC allocate_frame(PageNum page_num, Frame **buf);

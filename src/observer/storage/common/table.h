@@ -83,6 +83,8 @@ public:
     return record_handler_;
   }
 
+  RC storage_text(int &file_desc, int &text_len, char* text);
+
 public:
   const char *name() const;
 
@@ -134,6 +136,7 @@ private:
   DiskBufferPool *data_buffer_pool_ = nullptr;   /// 数据文件关联的buffer pool
   RecordFileHandler *record_handler_ = nullptr;  /// 记录操作
   std::vector<Index *> indexes_;
+  int text_id_;
 };
 
 #endif  // __OBSERVER_STORAGE_COMMON_TABLE_H__

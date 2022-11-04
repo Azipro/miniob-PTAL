@@ -104,7 +104,7 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
         LOG_WARN("cannot find left_attr ");
         return rc;
       }
-      if (!(field->type() == AttrType::CHARS && condition.right_value.type == AttrType::CHARS)) {
+      if (!((field->type() == AttrType::CHARS || field->type() == AttrType::TEXTS) && condition.right_value.type == AttrType::CHARS)) {
         LOG_INFO("left and right must be char");
         return RC::SCHEMA_FIELD_TYPE_MISMATCH;
       }
@@ -219,6 +219,7 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
   }
 
   if (left_type == right_type || (left_type == DATES && right_type == NULL_) || (right_type == DATES && left_type == NULL_) || 
+      (left_type == TEXTS && (right_type == CHARS || right_type == NULL_)) || (right_type == TEXTS && (left_type == CHARS || left_type == NULL_)) ||
       ((left_type == INTS || left_type == FLOATS || left_type == CHARS || left_type == NULL_) &&
           (right_type == INTS || right_type == FLOATS || right_type == CHARS || right_type == NULL_))) {
     filter_unit = new FilterUnit;
