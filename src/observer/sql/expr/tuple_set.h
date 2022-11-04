@@ -388,6 +388,9 @@ public:
       tuple1.cell_at(order_index_[i], cell1);
       tuple2.cell_at(order_index_[i], cell2);
       int res = cell1.compare(cell2);
+
+      if (cell1.attr_type() == NULL_ && cell2.attr_type() != NULL_) res = -1;
+      if (cell1.attr_type() != NULL_ && cell2.attr_type() == NULL_) res = 1;
       if (res != 0) {
         if (order_type_[i] == ORDER_ASC)
           return res < 0;
