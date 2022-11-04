@@ -403,8 +403,8 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
   }
 
   char *user_key = nullptr;
-  char *left_user_key = nullptr;
-  char *right_user_key = nullptr;
+  const char *left_user_key = nullptr;
+  const char *right_user_key = nullptr;
   int  attr_num = better_filter.size();
   int  attr_len[MAX_NUM];
   bool left_inclusive = false;
@@ -498,8 +498,9 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt, co
     
     user_key = (char*)malloc(attr_len[0]);
     memmove(user_key, value.data(), attr_len[0]);
-  }
 
+    LOG_INFO("%s", is_null(user_key, attr_len[0]) ? "null" : "not null");
+  }
 
   switch (comp) {
   case EQUAL_TO: {

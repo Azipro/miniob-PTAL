@@ -1777,7 +1777,7 @@ RC BplusTreeScanner::open(const char *left_user_key, int *left_len, int left_num
   if (left_user_key && right_user_key) {
     const auto &attr_comparator = tree_handler_.key_comparator_.attr_comparator();
     const int result = attr_comparator(left_user_key, right_user_key);
-    LOG_INFO("result = %d", result);
+    LOG_INFO("left_user_key vs. right_user_key : result = %d", result);
     if (result > 0 || // left < right
          // left == right but is (left,right)/[left,right) or (left,right]
 	     (result == 0 && (left_inclusive == false || right_inclusive == false))) { 
@@ -1785,6 +1785,8 @@ RC BplusTreeScanner::open(const char *left_user_key, int *left_len, int left_num
       return RC::INVALID_ARGUMENT; // TODO  open失败， 看起来是comparator失败了
     }
   }
+
+  LOG_INFO("begin to get query range.");
 
   if (nullptr == left_user_key) {
     rc = tree_handler_.left_most_page(left_frame_);

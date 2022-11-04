@@ -68,7 +68,7 @@ void null_data(void *&data, size_t bytes) { // 正确做法应该是用bitmap
 bool is_null(const char *data, size_t len) {
   void *null_cell_data = malloc(len);
   null_data(null_cell_data, len);
-  
+
   if (0 == strncmp((const char*)null_cell_data, data, len)) {
     free(null_cell_data);
     return true;

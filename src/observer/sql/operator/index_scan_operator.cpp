@@ -16,8 +16,8 @@ See the Mulan PSL v2 for more details. */
 #include "storage/index/index.h"
 
 IndexScanOperator::IndexScanOperator(const Table *table, Index *index,
-		    const char *left_user_key, bool left_inclusive,
-		    const char *right_user_key, bool right_inclusive,
+		    const char *&left_user_key, bool left_inclusive,
+		    const char *&right_user_key, bool right_inclusive,
         int *attr_len, int attr_num)
   : table_(table), index_(index),
     left_inclusive_(left_inclusive), right_inclusive_(right_inclusive),
@@ -32,18 +32,25 @@ IndexScanOperator::IndexScanOperator(const Table *table, Index *index,
   if (left_user_key) {
     left_user_key_ = (char*)malloc(total_len);
     memcpy(left_user_key_, left_user_key, total_len);
-    //LOG_INFO("%s", is_null(left_user_key, total_len) ? "null" : "..........not null");
+    LOG_INFO("left_user_key is not nullptr");
 
     // LOG_INFO("left_user_key_ =  %d", *(int*)left_user_key_);
     // LOG_INFO("left_user_key =  %d", *(int*)left_user_key);
     // LOG_INFO("left_user_key pointer = %p", left_user_key);
+  } else {
+    left_user_key_ = nullptr;
   }
+  
   if (right_user_key) {
     right_user_key_ = (char*)malloc(total_len);
     memcpy(right_user_key_, right_user_key, total_len);
+    LOG_INFO("right_user_key is not nullptr");
+
     // LOG_INFO("right_user_key_ =  %d", *(int*)right_user_key_);
     // LOG_INFO("right_user_key =  %d", *(int*)right_user_key);
     // LOG_INFO("right_user_key pointer = %p", right_user_key);
+  } else {
+    right_user_key_ = nullptr;
   }
 }
 

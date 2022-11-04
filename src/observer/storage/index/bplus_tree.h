@@ -51,11 +51,17 @@ public:
   int operator()(const char *v1, const char *v2) const {
     int result = 0;
     int offset = 0;
+    // LOG_INFO("attr_length_ = %d \t attr_num_ = %d", attr_length_, attr_num_);
+
     for (int i = 0 ; i < attr_num_ ; ++ i) {
+      // LOG_INFO("i = %d \t offset = %d", i, offset);
+      // LOG_INFO("attr_type_: %d", attr_type_[i]);
       switch (attr_type_[i]) {
         case INTS: case DATES: {
+          // LOG_INFO("v1 = %p, v2 = %p", v1, v2);
           bool v1_null = is_null(v1 + offset, sizeof(int));
           bool v2_null = is_null(v2 + offset, sizeof(int));
+          // LOG_INFO("v1_null: %s   v2_null: %s", v1_null ? "null" : "not null", v2_null ? "null" : "not null");
           if (v1_null && v2_null) result = 0;
           else if (v1_null) result = -1;
           else if (v2_null) result = 1;
@@ -80,7 +86,7 @@ public:
           else result = compare_string((void *)(v1 + offset), attr_length_each_[i], (void *)(v2 + offset), attr_length_each_[i]);
         }
           break;
-        default:{
+        default: {
           LOG_ERROR("unknown attr type. %d", attr_type_);
           abort();
         }

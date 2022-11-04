@@ -21,8 +21,8 @@ class IndexScanOperator : public Operator
 {
 public: 
   IndexScanOperator(const Table *table, Index *index,
-		    const char *left_user_key, bool left_inclusive,
-		    const char *right_user_key, bool right_inclusive,
+		    const char *&left_user_key, bool left_inclusive,
+		    const char *&right_user_key, bool right_inclusive,
         int *attr_len, int attr_num);
 
   virtual ~IndexScanOperator();
