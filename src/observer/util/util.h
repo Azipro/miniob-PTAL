@@ -21,3 +21,5 @@ std::string double2string(double v);
 bool like(const char * s, const char * p, int len);
 
 bool is_number(const char * s);
+void null_data(void *&data, size_t bytes);
+bool is_null(const char *data, size_t len);

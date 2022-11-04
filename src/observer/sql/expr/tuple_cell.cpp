@@ -41,6 +41,9 @@ void TupleCell::to_string(std::ostream &os) const
   case DATES: {
     os << date_to_string(*(int *)data_);
   } break;
+  case NULL_: {
+    os << "NULL";
+  } break;
   default: {
     LOG_WARN("unsupported attr type: %d", attr_type_);
   } break;
@@ -49,6 +52,10 @@ void TupleCell::to_string(std::ostream &os) const
 
 int TupleCell::compare(const TupleCell &other) const
 {
+  if (this->attr_type_ == NULL_ || other.attr_type_ == NULL_) {
+    return 0;
+  }
+
   if (this->attr_type_ == other.attr_type_) {
     switch (this->attr_type_) {
     case INTS: return compare_int(this->data_, other.data_);

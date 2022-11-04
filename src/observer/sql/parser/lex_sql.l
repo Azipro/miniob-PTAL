@@ -53,6 +53,10 @@ QUOTE            [\'\"]
 [Ii][Nn][Nn][Ee][Rr]					                       RETURN_TOKEN(INNER);
 [Jj][Oo][Ii][Nn]						                         RETURN_TOKEN(JOIN);
 [Oo][Nn]                                             RETURN_TOKEN(ON);
+[Ii][Ss]								                             RETURN_TOKEN(IS);
+[Nn][Oo][Tt]							                           RETURN_TOKEN(NOT);
+[Nn][Uu][Ll][Ll] 						                         RETURN_TOKEN(NULL__);
+[Nn][Uu][Ll][Ll][Aa][Bb][Ll][Ee]   	                 RETURN_TOKEN(NULLABLE);
 [Ss][Hh][Oo][Ww]                                     RETURN_TOKEN(SHOW);
 [Ss][Yy][Nn][Cc]                                     RETURN_TOKEN(SYNC);
 [Ss][Ee][Ll][Ee][Cc][Tt]                             RETURN_TOKEN(SELECT);
@@ -75,7 +79,6 @@ QUOTE            [\'\"]
 [Ll][Oo][Aa][Dd]                                     RETURN_TOKEN(LOAD);
 [Dd][Aa][Tt][Aa]                                     RETURN_TOKEN(DATA);
 [Ii][Nn][Ff][Ii][Ll][Ee]                             RETURN_TOKEN(INFILE);
-[Nn][Oo][Tt]                                         RETURN_TOKEN(NOT);
 [Ll][Ii][Kk][Ee]                                     RETURN_TOKEN(LIKE);
 [Mm][Aa][Xx]                                         RETURN_TOKEN(MAX);
 [Mm][Ii][Nn]                                         RETURN_TOKEN(MIN);

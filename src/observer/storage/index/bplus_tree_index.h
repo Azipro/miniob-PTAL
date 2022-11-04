@@ -31,7 +31,7 @@ public:
   RC update_entry(const char *record, const RID *rid, const char *old_record) override;
   RC delete_entry(const char *record, const RID *rid) override;
 
-  char* construct_user_key(const char* record);
+  char* construct_user_key(const char* record, bool &have_null);
 
   /**
    * 扫描指定范围的数据

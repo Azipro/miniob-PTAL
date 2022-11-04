@@ -17,6 +17,7 @@ typedef struct ParserContext {
   size_t from_length;
   size_t value_length;
   size_t insert_length;
+  int nullable;
   Value values[MAX_NUM];
   Inserts_more inserts_more[MAX_NUM];
   Condition conditions[MAX_NUM];
@@ -47,6 +48,7 @@ void yyerror(yyscan_t scanner, const char *str)
   context->select_length = 0;
   context->value_length = 0;
   context->insert_length = 0;
+  context->nullable = 0;
   context->ssql->sstr.insertion.inserts_more_num = 0;
   printf("parse sql failed. error=%s", str);
 }
@@ -102,6 +104,9 @@ ParserContext *get_context(yyscan_t scanner)
 		INNER
 		JOIN
         ON
+		NOT
+		NULL__ // 避免和C中的NULL冲突
+		NULLABLE
         LOAD
         DATA
         INFILE
@@ -111,7 +116,7 @@ ParserContext *get_context(yyscan_t scanner)
         LE
         GE
         NE
-        NOT
+		IS
         LIKE
         MAX
         MIN
@@ -276,10 +281,10 @@ attr_def_list:
     ;
     
 attr_def:
-    ID_get type LBRACE number RBRACE 
+    ID_get type LBRACE number RBRACE is_null
 		{
 			AttrInfo attribute;
-			attr_info_init(&attribute, CONTEXT->id, $2, $4);
+			attr_info_init(&attribute, CONTEXT->id, $2, $4, CONTEXT->nullable);
 			create_table_append_attribute(&CONTEXT->ssql->sstr.create_table, &attribute);
 			// CONTEXT->ssql->sstr.create_table.attributes[CONTEXT->value_length].name =(char*)malloc(sizeof(char));
 			// strcpy(CONTEXT->ssql->sstr.create_table.attributes[CONTEXT->value_length].name, CONTEXT->id); 
@@ -287,10 +292,10 @@ attr_def:
 			// CONTEXT->ssql->sstr.create_table.attributes[CONTEXT->value_length].length = $4;
 			CONTEXT->value_length++;
 		}
-    |ID_get type
+    |ID_get type is_null
 		{
 			AttrInfo attribute;
-			attr_info_init(&attribute, CONTEXT->id, $2, 4);
+			attr_info_init(&attribute, CONTEXT->id, $2, 4, CONTEXT->nullable);
 			create_table_append_attribute(&CONTEXT->ssql->sstr.create_table, &attribute);
 			// CONTEXT->ssql->sstr.create_table.attributes[CONTEXT->value_length].name=(char*)malloc(sizeof(char));
 			// strcpy(CONTEXT->ssql->sstr.create_table.attributes[CONTEXT->value_length].name, CONTEXT->id); 
@@ -308,6 +313,17 @@ type:
        | FLOAT_T { $$=FLOATS; }
        | DATE_T { $$=DATES; }
        ;
+is_null: 
+	/* empty */{
+		CONTEXT->nullable = 0;
+	}
+	| NOT NULL__{
+		CONTEXT->nullable = 0;
+	}
+	| NULLABLE {
+		CONTEXT->nullable = 1;
+	}
+	;
 ID_get:
 	ID 
 	{
@@ -364,7 +380,9 @@ insert_vaule:
 			$1 = substr($1,1,strlen($1)-2);
   		value_init_string(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->inserts_more[CONTEXT->insert_length].value_num++], $1);
 		}
-    ;
+    |NULL__ {
+		value_init_null(&CONTEXT->inserts_more[CONTEXT->insert_length].values[CONTEXT->inserts_more[CONTEXT->insert_length].value_num++]);
+	};
 value:
     NUMBER{	
   		value_init_integer(&CONTEXT->values[CONTEXT->value_length++], $1);
@@ -382,6 +400,10 @@ value:
 		memset(GET_SUB_CONTEXT->ssql, 0, sizeof(*GET_SUB_CONTEXT->ssql));
 	}
     ;
+	|NULL__ {
+		value_init_null(&CONTEXT->values[CONTEXT->value_length++]);
+	}
+	;
     
 delete:		/*  delete 语句的语法解析树*/
     DELETE FROM ID where SEMICOLON 
@@ -1024,6 +1046,9 @@ sub_value:
 			$1 = substr($1,1,strlen($1)-2);
   		value_init_string(&GET_SUB_CONTEXT->values[GET_SUB_CONTEXT->value_length++], $1);
 		}
+	|NULL__ {
+		value_init_null(&GET_SUB_CONTEXT->values[GET_SUB_CONTEXT->value_length++]);
+	}
 	;
 
 sub_comOp:
@@ -1035,6 +1060,8 @@ sub_comOp:
     | NE { GET_SUB_CONTEXT->comp = NOT_EQUAL; }
     | LIKE { GET_SUB_CONTEXT->comp = OP_LIKE; }
     | NOT LIKE { GET_SUB_CONTEXT->comp = OP_NOT_LIKE; }
+	| IS       { CONTEXT->comp = EQUAL_IS; }
+	| IS NOT   { CONTEXT->comp = NOT_EQUAL_IS; }
     ;
 
 comOp:
@@ -1044,8 +1071,10 @@ comOp:
     | LE { CONTEXT->comp = LESS_EQUAL; }
     | GE { CONTEXT->comp = GREAT_EQUAL; }
     | NE { CONTEXT->comp = NOT_EQUAL; }
-    | LIKE { CONTEXT->comp = OP_LIKE; }
+    | LIKE 	   { CONTEXT->comp = OP_LIKE; }
     | NOT LIKE { CONTEXT->comp = OP_NOT_LIKE; }
+	| IS       { CONTEXT->comp = EQUAL_IS; }
+	| IS NOT   { CONTEXT->comp = NOT_EQUAL_IS; }
     ;
 
 load_data:

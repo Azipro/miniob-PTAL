@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include <vector>
 
 #include "common/log/log.h"
+#include "util/util.h"
 #include "sql/parser/parse.h"
 #include "sql/expr/tuple_cell.h"
 #include "sql/expr/expression.h"
@@ -117,9 +118,18 @@ public:
     const TupleCellSpec *spec = speces_[index];
     FieldExpr *field_expr = (FieldExpr *)spec->expression();
     const FieldMeta *field_meta = field_expr->field().meta();
-    cell.set_type(field_meta->type());
-    cell.set_data(this->record_->data() + field_meta->offset());
-    cell.set_length(field_meta->len());
+
+    const char* cell_data = this->record_->data() + field_meta->offset();
+    const int len = field_meta->len();
+    bool is_null_cell = false;
+
+    if (is_null(cell_data, len)) {
+      is_null_cell = true;
+    }
+
+    cell.set_type(is_null_cell ? NULL_ : field_meta->type());
+    cell.set_data(cell_data);
+    cell.set_length(len);
     return RC::SUCCESS;
   }
 

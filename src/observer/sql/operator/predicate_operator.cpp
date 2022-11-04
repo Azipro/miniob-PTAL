@@ -75,6 +75,12 @@ bool PredicateOperator::do_predicate(RowTuple &tuple)
     left_expr->get_value(tuple, left_cell);
     right_expr->get_value(tuple, right_cell);
 
+    if (comp != EQUAL_IS && comp != NOT_EQUAL_IS) {
+      if (left_cell.attr_type() == NULL_ || right_cell.attr_type() == NULL_){
+        return false;
+      }
+    }
+
     const int compare = left_cell.compare(right_cell);
     bool filter_result = false;
     switch (comp) {
@@ -103,6 +109,12 @@ bool PredicateOperator::do_predicate(RowTuple &tuple)
     case OP_NOT_LIKE: {
       filter_result = !like(left_cell.data(), right_cell.data(), left_cell.length());
       LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left_cell.data(), right_cell.data(), filter_result);
+    } break;
+    case EQUAL_IS: {
+      filter_result = (left_cell.attr_type() == NULL_);
+    } break;
+    case NOT_EQUAL_IS: {
+      filter_result = (left_cell.attr_type() != NULL_);;
     } break;
     default: {
       LOG_WARN("invalid compare type: %d", comp);
