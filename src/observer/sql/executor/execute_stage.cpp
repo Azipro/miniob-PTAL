@@ -566,6 +566,7 @@ select * from t where id = (select count(id) from t);
 select * from t where id > (select min(id) from t);
 select * from t where id <= (select max(id) from t);
 select * from t where id in (select min(id) from t);
+select * from t where not exists (select * from t where t.id > t1.id);
 select * from t where id in (select max(id) from t);
 select * from t where name in (select max(name) from t);
 select * from t where name in (select max(id) from t);
@@ -573,6 +574,15 @@ select * from t where id not in (select max(id) from t);
 select * from t where exists (select max(id) from t);
 select * from t where not exists (select max(id) from t);
 select * from t where exists (select id from t where id = 4);
+
+create table t2 (id int, name char, col1 int, col2 int);
+insert into t2 values(1, '111', 1, 1);
+insert into t2 values(2, '222', 2, 2);
+insert into t2 values(3, '333', 3, 3);
+select * from t2;
+select * from t where t.col1 >(select avg(t2.col1) from t2); 
+select * from t where t.name >(select avg(t2.col1) from t2); 
+select * from t where t.col1 >(select avg(t2.col1) from t2) and t.col2 >= 2; 
 */
 RC ExecuteStage::do_select(SQLStageEvent *sql_event)
 {
@@ -592,6 +602,10 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
       session_event->set_response("FAILURE\n");
       return rc;
     }
+  }
+  if(select_stmt->filter_stmt() == nullptr){
+    session_event->set_response("FAILURE\n");
+    return RC::INVALID_ARGUMENT;
   }
   if (select_stmt->tables().size() == 1) {
     rc = do_select_table(select_stmt, magic_table, false);
@@ -717,6 +731,9 @@ RC ExecuteStage::do_sub_query(Db *db, Query* query, std::vector<Value> &value_li
       SelectStmt *select_stmt = (SelectStmt *)stmt;
       TupleSet *magic_table = nullptr;
       RC rc = RC::SUCCESS;
+      if(select_stmt->filter_stmt() == nullptr){
+        return RC::INVALID_ARGUMENT;
+      }
       if (select_stmt->tables().size() == 1) {
         rc = do_select_table(select_stmt, magic_table, false);
       } else if (select_stmt->tables().size() > 1) {
@@ -1071,7 +1088,9 @@ RC ExecuteStage::convert_value(Db *db, Value & value){
     return RC::SUCCESS;
   }else{
     std::vector<Value> value_list;
+    LOG_INFO("debug info, before do_sub_query");
     do_sub_query(db, (Query *)value.data, value_list);
+    LOG_INFO("debug info, after do_sub_query");
     if(value_list.size() == 0){
       value_init_undefined(&value);
       return RC::INVALID_ARGUMENT;

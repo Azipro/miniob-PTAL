@@ -180,6 +180,7 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
            select_sql.conditions, select_sql.condition_num, filter_stmt);
   if (rc != RC::SUCCESS) {
     // 后续可能会更新filter
+    filter_stmt = nullptr;
     rc = RC::SUCCESS;
     LOG_WARN("cannot construct filter stmt");
     // return rc;
@@ -362,6 +363,7 @@ RC SelectStmt::update_filter(Db *db){
   RC rc = FilterStmt::create(db, default_table, &table_map,
 			     conditions_, condition_num_, filter_stmt);
   if (rc != RC::SUCCESS) {
+    filter_stmt = nullptr;
     LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
     return rc;
   }
