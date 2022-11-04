@@ -604,6 +604,10 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
       return rc;
     }
     magic_table->set_group_map();
+    rc = magic_table->filter_group_map(select_stmt->having_fields());
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
     rc = magic_table->print_group_set(ss, select_stmt->query_fields());
   } else if (select_stmt->agg_num() > 0) {
     rc = magic_table->print_agg_set(ss, select_stmt->query_fields());

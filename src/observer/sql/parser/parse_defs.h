@@ -109,6 +109,12 @@ typedef struct {
   RelAttr relation_attr;
 } GroupBy;
 
+typedef struct {
+  RelAttr left_attr;
+  CompOp comp;
+  Value right_value;
+} Having;
+
 // struct of select
 typedef struct {
   size_t agg_num;                 // Length of aggregation functions in Select clause
@@ -122,6 +128,8 @@ typedef struct {
   OrderBy order_by[MAX_NUM];      // Order By clause
   size_t group_num;               // Length in Group By clause
   GroupBy group_by[MAX_NUM];      // Group By clause
+  size_t having_num;              // Length in Having clause
+  Having having[MAX_NUM];         // Having clause
 } Selects;
 
 typedef struct {

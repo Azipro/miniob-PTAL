@@ -593,6 +593,105 @@ public:
     }
   }
 
+  RC filter_group_map(const std::vector<HavingField> &having_fields)
+  {
+    std::vector<int> having_index(having_fields.size(), -1);
+    for (int i = 0 ; i < having_fields.size() ; ++ i) {
+      for (int j = 0 ; j < speces_.size() ; ++ j) {
+        const char *table_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->table_name();
+        const char *field_name = dynamic_cast<FieldExpr*>(speces_[j]->expression())->field_name();
+        if (0 == strcmp(having_fields[i].table_name(), table_name) && 0 == strcmp(having_fields[i].field_name(), field_name)) {
+          having_index[i] = j;
+          break;
+        }
+      }
+      if (having_index[i] == -1) {
+        LOG_ERROR("not match having field in tuple set.");
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+    }
+    RC rc = RC::SUCCESS;
+    std::vector<int> out_key;
+    for (auto item : group_map_) {
+      int key = item.first;
+      std::vector<int> lines = item.second;
+      bool flag = true;
+      for (int i = 0; i < having_fields.size(); ++i) {
+        TupleCell cell1, cell2;
+        HavingField field = having_fields[i];
+        cell2.set_data((char*)field.value().data);
+        cell2.set_type(field.value().type);
+        cell2.set_length(strlen((const char *)field.value().data));
+        switch (field.agg_type()) {
+          case AGG_MAX:
+            rc = group_max_cell(lines, having_index[i], cell1);
+            break;
+          case AGG_MIN:
+            rc = group_min_cell(lines, having_index[i], cell1);
+            break;
+          case AGG_SUM:
+            rc = group_sum_cell(lines, having_index[i], cell1);
+            break;
+          case AGG_COUNT:
+            rc = group_count_cell(lines, having_index[i], cell1, true);
+            break;
+          case AGG_AVG:
+            rc = group_avg_cell(lines, having_index[i], cell1);
+            break;
+          default:
+            LOG_WARN("unknown aggregation function");
+            return RC::INVALID_ARGUMENT;
+        }
+        switch (field.comp()) {
+          case EQUAL_TO:
+            if (!(cell1.compare(cell2) == 0)) {
+              flag = false;
+            }
+            break;
+          case LESS_EQUAL:
+            if (!(cell1.compare(cell2) == 0 || cell1.compare(cell2) < 0)) {
+              flag = false;
+            }
+            break;
+          case NOT_EQUAL:
+            if (!(cell1.compare(cell2) != 0)) {
+              flag = false;
+            }
+            break;
+          case LESS_THAN:
+            if (!(cell1.compare(cell2) < 0)) {
+              flag = false;
+            }
+            break;
+          case GREAT_EQUAL:
+            if (!(cell1.compare(cell2) == 0 || cell1.compare(cell2) > 0)) {
+              flag = false;
+            }
+            break;
+          case GREAT_THAN:
+            if (!(cell1.compare(cell2) > 0)) {
+              flag = false;
+            }
+            break;
+        }
+        if (flag == false) {
+          break;
+        }
+      }
+      if (flag == false) {
+        out_key.push_back(key);
+      }
+    }
+    std::map<int, std::vector<int> > tmp_map;
+    for (auto item : group_map_) {
+      if (std::find(out_key.begin(), out_key.end(), item.first) == out_key.end()) {
+        tmp_map[item.first] = item.second;
+      }
+    }
+    group_map_ = tmp_map;
+    return RC::SUCCESS;
+  }
+
 private:
   std::vector<TupleCellSpec*> speces_;
   std::vector<MagicTuple> tuples_;

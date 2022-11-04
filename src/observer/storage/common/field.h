@@ -109,3 +109,26 @@ private:
   const Table *table_ = nullptr;
   const FieldMeta *field_ = nullptr;
 };
+
+class HavingField : public Field
+{
+public:
+  HavingField() = default;
+  HavingField(const Table *table, const FieldMeta *field, const AggType agg_type, const CompOp comp, Value value) :
+        table_(table), field_(field), agg_type_(agg_type), comp_(comp), value_(value) {}
+
+  const Table *table() const { return table_; }
+  const FieldMeta *meta() const { return field_; }
+  const char *table_name() const { return table_->name(); }
+  const char *field_name() const { return field_->name(); }
+  AggType agg_type() const { return this->agg_type_; }
+  const CompOp comp() const { return comp_; }
+  const Value value() const { return value_; }
+
+private:
+  const Table *table_ = nullptr;
+  const FieldMeta *field_ = nullptr;
+  AggType agg_type_ = AGG_NO;
+  CompOp comp_;
+  Value value_;
+};

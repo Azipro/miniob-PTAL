@@ -127,6 +127,7 @@ ParserContext *get_context(yyscan_t scanner)
         GROUP
         BY
         ASC
+        HAVING
 
 %union {
   struct _Attr *attr;
@@ -573,7 +574,7 @@ sub_rel_list:
 		  }
     ;
 select:				/*  select 语句的语法解析树*/
-    SELECT select_attr FROM ID rel_list where order_by group_by SEMICOLON
+    SELECT select_attr FROM ID rel_list where order_by group_by having SEMICOLON
 		{
 			// CONTEXT->ssql->sstr.selection.relations[CONTEXT->from_length++]=$4;
 			selects_append_relation(&CONTEXT->ssql->sstr.selection, $4);
@@ -589,7 +590,7 @@ select:				/*  select 语句的语法解析树*/
 			CONTEXT->select_length=0;
 			CONTEXT->value_length = 0;
 		}
-	| SELECT select_attr FROM ID rel_list inner where order_by group_by SEMICOLON
+	| SELECT select_attr FROM ID rel_list inner where order_by group_by having SEMICOLON
 		{
 			selects_append_relation(&CONTEXT->ssql->sstr.selection, $4);
 			selects_append_conditions(&CONTEXT->ssql->sstr.selection, CONTEXT->conditions, CONTEXT->condition_length);
@@ -1263,6 +1264,107 @@ group_attr:
 
 group_attr_list:
 	| COMMA group_attr group_attr_list
+	;
+
+having:
+	| HAVING having_condition having_condition_list
+	;
+
+having_condition:
+	MAX LBRACE ID RBRACE comOp value {
+		RelAttr left_attr;
+                aggregation_attr_init(&left_attr, NULL, $3, AGG_MAX);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+	}
+	| MAX LBRACE ID DOT ID RBRACE comOp value {
+          	RelAttr left_attr;
+                aggregation_attr_init(&left_attr, $3, $5, AGG_MAX);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
+        | MIN LBRACE ID RBRACE comOp value {
+       		RelAttr left_attr;
+                aggregation_attr_init(&left_attr, NULL, $3, AGG_MIN);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+       	}
+       	| MIN LBRACE ID DOT ID RBRACE comOp value {
+                RelAttr left_attr;
+                aggregation_attr_init(&left_attr, $3, $5, AGG_MIN);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
+        | SUM LBRACE ID RBRACE comOp value {
+        	RelAttr left_attr;
+                aggregation_attr_init(&left_attr, NULL, $3, AGG_SUM);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
+        | SUM LBRACE ID DOT ID RBRACE comOp value {
+          	RelAttr left_attr;
+                aggregation_attr_init(&left_attr, $3, $5, AGG_SUM);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
+        | COUNT LBRACE ID RBRACE comOp value {
+        	RelAttr left_attr;
+                aggregation_attr_init(&left_attr, NULL, $3, AGG_COUNT);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
+        | COUNT LBRACE ID DOT ID RBRACE comOp value {
+          	RelAttr left_attr;
+                aggregation_attr_init(&left_attr, $3, $5, AGG_COUNT);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
+        | AVG LBRACE ID RBRACE comOp value {
+        	RelAttr left_attr;
+                aggregation_attr_init(&left_attr, NULL, $3, AGG_AVG);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
+        | AVG LBRACE ID DOT ID RBRACE comOp value {
+          	RelAttr left_attr;
+                aggregation_attr_init(&left_attr, $3, $5, AGG_AVG);
+                Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+                Having having;
+                having_init(&having, CONTEXT->comp, &left_attr, right_value);
+                selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
+	;
+
+having_condition_list:
+	| AND having_condition having_condition_list
 	;
 
 %%
