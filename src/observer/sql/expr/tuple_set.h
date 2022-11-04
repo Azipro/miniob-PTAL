@@ -372,7 +372,11 @@ public:
               LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
               break;
             case AGG_COUNT:
-              rc = group_count_cell(lines, query_index[i], cell);
+              if (0 == strcmp(query_fields[i].agg_str(), "*") || is_number(query_fields[i].agg_str())) {
+                rc = group_count_cell(lines, query_index[i], cell, false);
+              } else {
+                rc = group_count_cell(lines, query_index[i], cell, true);
+              }
               LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
               break;
             case AGG_AVG:
@@ -785,10 +789,10 @@ private:
     cell.set_length(cell1.length());
     cell.set_data(cell1.data());
     AttrType attr_type = cell.attr_type();
-    for (int i : lines) {
+    for (int i = 1; i < lines.size(); i++) {
       TupleCell cell2;
-      tuples_[i].cell_at(j, cell2);
-      if (cell.compare(cell2) < 0) {
+      tuples_[lines[i]].cell_at(j, cell2);
+      if (cell.compare(cell2) < 0 || cell.attr_type() == NULL_) {
         cell.set_type(cell2.attr_type());
         cell.set_length(cell2.length());
         cell.set_data(cell2.data());
@@ -808,10 +812,10 @@ private:
     cell.set_length(cell1.length());
     cell.set_data(cell1.data());
     AttrType attr_type = cell.attr_type();
-    for (int i : lines) {
+    for (int i = 1; i < lines.size(); i++) {
       TupleCell cell2;
-      tuples_[i].cell_at(j, cell2);
-      if (cell.compare(cell2) > 0) {
+      tuples_[lines[i]].cell_at(j, cell2);
+      if (cell.compare(cell2) > 0 || cell.attr_type() == NULL_) {
         cell.set_type(cell2.attr_type());
         cell.set_length(cell2.length());
         cell.set_data(cell2.data());
@@ -830,24 +834,35 @@ private:
     cell.set_type(cell1.attr_type());
     cell.set_length(cell1.length());
     cell.set_data(cell1.data());
+
+    int first_not_null = 1;
+    while (cell.attr_type() == NULL_ && first_not_null < lines.size()) {
+      tuples_[lines[first_not_null ++]].cell_at(j, cell1);
+      cell.set_type(cell1.attr_type());
+      cell.set_length(cell1.length());
+      cell.set_data(cell1.data());
+    }
+
     AttrType attr_type = cell.attr_type();
     if (attr_type == INTS) {
       int n = (int)*cell.data();
-      for (int i = 1; i < lines.size(); i++) {
+      for (int i = first_not_null; i < lines.size(); ++i) {
         TupleCell cell2;
         tuples_[lines[i]].cell_at(j, cell2);
+        if (cell2.attr_type() == NULL_) continue;
         n += (int)*cell2.data();
       }
-      char * data = (char * )malloc(sizeof(int));
+      char *data = (char *)malloc(sizeof(int)); // 这里有内存泄漏
       memcpy(data, (char *)&n, sizeof(int));
       cell.set_data(data);
-      cell.set_type(INTS);
+      cell.set_type(cell.attr_type());
       cell.set_length(sizeof(int));
     } else if (attr_type == FLOATS) {
       float n = string_to_float(double2string(*(float*)cell.data()).c_str());
-      for (int i = 1; i < lines.size(); i++) {
+      for (int i = first_not_null; i < lines.size(); ++i) {
         TupleCell cell2;
         tuples_[lines[i]].cell_at(j, cell2);
+        if (cell2.attr_type() == NULL_) continue;
         n += string_to_float(double2string(*(float*)cell2.data()).c_str());
       }
       char * data = (char * )malloc(sizeof(float));
@@ -857,9 +872,10 @@ private:
       cell.set_length(sizeof(float));
     } else if (attr_type == CHARS) {
       float n = string_to_float(cell.data());
-      for (int i = 1; i < lines.size(); i++) {
+      for (int i = first_not_null; i < lines.size(); ++i) {
         TupleCell cell2;
         tuples_[lines[i]].cell_at(j, cell2);
+        if (cell2.attr_type() == NULL_) continue;
         n += string_to_float(cell2.data());
       }
       char * data = (char * )malloc(sizeof(float));
@@ -867,16 +883,19 @@ private:
       cell.set_data(data);
       cell.set_type(FLOATS);
       cell.set_length(sizeof(float));
+    } else { // NULL
+      // 无需处理
     }
     return RC::SUCCESS;
   }
 
-  RC group_count_cell(std::vector<int>lines, int j, TupleCell & cell)
+  RC group_count_cell(std::vector<int>lines, int j, TupleCell & cell, bool ignore_null)
   {
     int n = 0;
-    for (int i : lines) {
+    for (int i = 0; i < lines.size(); ++i) {
       TupleCell cell2;
-      tuples_[i].cell_at(j, cell2);
+      tuples_[lines[i]].cell_at(j, cell2);
+      if (ignore_null && cell2.attr_type() == NULL_) continue;
       if (cell2.data() != nullptr) {
         n++;
       }
@@ -897,10 +916,21 @@ private:
     if (rc != RC::SUCCESS) {
       return rc;
     }
-    rc = group_count_cell(lines, j, cell2);
+    rc = group_count_cell(lines, j, cell2, true);
     if (rc != RC::SUCCESS) {
       return rc;
     }
+
+    if (cell1.attr_type() == NULL_ || cell2.attr_type() == NULL_) {
+      void *data = malloc(sizeof(float));
+      null_data(data, sizeof(float));
+      cell.set_data((char*)data);
+      cell.set_type(NULL_);
+      cell.set_length(sizeof(float));
+
+      return RC::SUCCESS;
+    }
+
     float n;
     AttrType attr_type = cell1.attr_type();
     if (attr_type == INTS) {
@@ -909,14 +939,22 @@ private:
       n = *(float *)cell1.data();
     }
     int m = *(int *)cell2.data();
-    n /= m;
-    char * data = (char *)malloc(sizeof(float));
-    memcpy(data, (char *)&n, sizeof(float));
-    cell.set_data(data);
-    cell.set_type(FLOATS);
+    if (m == 0) {
+      void *data = malloc(sizeof(float));
+      null_data(data, sizeof(float));
+      cell.set_data((char*)data);
+      cell.set_type(NULL_);
+    } else {
+      n /= m;
+      char * data = (char *)malloc(sizeof(float));
+      memcpy(data, (char *)&n, sizeof(float));
+      cell.set_data(data);
+      cell.set_type(FLOATS);
+    }
     cell.set_length(sizeof(float));
     return RC::SUCCESS;
   }
+
 };
 
 std::vector<int> TupleSet::order_index_;
