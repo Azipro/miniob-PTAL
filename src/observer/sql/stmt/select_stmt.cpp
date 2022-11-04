@@ -48,6 +48,16 @@ static void agg_wildcard_fields(Table *table, std::vector<Field> &field_metas, A
   }
 }
 
+static void agg_wildcard_having_fields(Table *table, std::vector<HavingField> &field_metas, AggType agg_type, char * agg_str, CompOp comp, Value value)
+{
+  const TableMeta &table_meta = table->table_meta();
+  const int field_num = table_meta.field_num();
+  int i = table_meta.sys_field_num();
+  if (field_num > 0) {
+    field_metas.push_back(HavingField(table, table_meta.field(i), agg_type, agg_str, comp, value));
+  }
+}
+
 RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
 {
   if (nullptr == db) {
@@ -272,7 +282,13 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
   for (int i = 0; i < select_sql.having_num; i++) {
     const Having &having = select_sql.having[i];
 
-    if (!common::is_blank(having.left_attr.relation_name)) {
+    if (common::is_blank(having.left_attr.relation_name) && (0 == strcmp(having.left_attr.attribute_name, "*") || is_number(having.left_attr.attribute_name))) {
+      const CompOp comp = having.comp;
+      const Value value = having.right_value;
+      for (Table *table : tables) {
+          agg_wildcard_having_fields(table, having_fields, having.left_attr.aggregation_type, having.left_attr.attribute_name, comp, value);
+      }
+    } else if (!common::is_blank(having.left_attr.relation_name)) {
       const char *table_name = having.left_attr.relation_name;
       const char *field_name = having.left_attr.attribute_name;
       const CompOp comp = having.comp;
@@ -297,7 +313,7 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
           return RC::SCHEMA_FIELD_MISSING;
         }
 
-        having_fields.push_back(HavingField(table, field_meta, having.left_attr.aggregation_type, comp, value));
+        having_fields.push_back(HavingField(table, field_meta, having.left_attr.aggregation_type, having.left_attr.attribute_name, comp, value));
       }
     } else {
       if (tables.size() != 1) {
@@ -314,7 +330,7 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
         return RC::SCHEMA_FIELD_MISSING;
       }
 
-      having_fields.push_back(HavingField(table, field_meta, having.left_attr.aggregation_type, comp, value));
+      having_fields.push_back(HavingField(table, field_meta, having.left_attr.aggregation_type, having.left_attr.attribute_name, comp, value));
     }
   }
 

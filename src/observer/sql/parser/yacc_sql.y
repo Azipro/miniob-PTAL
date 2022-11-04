@@ -1343,6 +1343,26 @@ having_condition:
                 having_init(&having, CONTEXT->comp, &left_attr, right_value);
                 selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
         }
+        | COUNT LBRACE NUMBER RBRACE comOp value {
+          RelAttr left_attr;
+          char *str = malloc(10 * sizeof(char));
+          snprintf(str, 10, "%d", $3);
+          aggregation_attr_init(&left_attr, NULL, str, AGG_COUNT);
+          Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+          Having having;
+          having_init(&having, CONTEXT->comp, &left_attr, right_value);
+          selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
+        | COUNT LBRACE STAR RBRACE comOp value {
+          RelAttr left_attr;
+          aggregation_attr_init(&left_attr, NULL, "*", AGG_COUNT);
+          Value *right_value = &CONTEXT->values[CONTEXT->value_length - 1];
+
+          Having having;
+          having_init(&having, CONTEXT->comp, &left_attr, right_value);
+          selects_append_having(&CONTEXT->ssql->sstr.selection, &having);
+        }
         | AVG LBRACE ID RBRACE comOp value {
         	RelAttr left_attr;
                 aggregation_attr_init(&left_attr, NULL, $3, AGG_AVG);

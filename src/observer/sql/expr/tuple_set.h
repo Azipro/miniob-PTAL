@@ -361,15 +361,12 @@ public:
           switch (query_fields[i].agg_type()) {
             case AGG_MAX:
               rc = group_max_cell(lines, query_index[i], cell);
-              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
               break;
             case AGG_MIN:
               rc = group_min_cell(lines, query_index[i], cell);
-              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
               break;
             case AGG_SUM:
               rc = group_sum_cell(lines, query_index[i], cell);
-              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
               break;
             case AGG_COUNT:
               if (0 == strcmp(query_fields[i].agg_str(), "*") || is_number(query_fields[i].agg_str())) {
@@ -377,12 +374,14 @@ public:
               } else {
                 rc = group_count_cell(lines, query_index[i], cell, true);
               }
-              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
               break;
             case AGG_AVG:
               rc = group_avg_cell(lines, query_index[i], cell);
-              LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
               break;
+          }
+          if (rc != RC::SUCCESS) {
+            LOG_WARN("failed to aggregate. index=%d, rc=%s", i, strrc(rc));
+            return rc;
           }
         }
         if (!first_field) {
@@ -633,7 +632,11 @@ public:
             rc = group_sum_cell(lines, having_index[i], cell1);
             break;
           case AGG_COUNT:
-            rc = group_count_cell(lines, having_index[i], cell1, true);
+            if (0 == strcmp(having_fields[i].agg_str(), "*") || is_number(having_fields[i].agg_str())) {
+              rc = group_count_cell(lines, having_index[i], cell1, false);
+            } else {
+              rc = group_count_cell(lines, having_index[i], cell1, true);
+            }
             break;
           case AGG_AVG:
             rc = group_avg_cell(lines, having_index[i], cell1);
