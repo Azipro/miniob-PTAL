@@ -123,6 +123,9 @@ ParserContext *get_context(yyscan_t scanner)
         SUM
         COUNT
         AVG
+        ORDER
+        BY
+        ASC
 
 %union {
   struct _Attr *attr;
@@ -569,7 +572,7 @@ sub_rel_list:
 		  }
     ;
 select:				/*  select 语句的语法解析树*/
-    SELECT select_attr FROM ID rel_list where SEMICOLON
+    SELECT select_attr FROM ID rel_list where order_by SEMICOLON
 		{
 			// CONTEXT->ssql->sstr.selection.relations[CONTEXT->from_length++]=$4;
 			selects_append_relation(&CONTEXT->ssql->sstr.selection, $4);
@@ -585,7 +588,7 @@ select:				/*  select 语句的语法解析树*/
 			CONTEXT->select_length=0;
 			CONTEXT->value_length = 0;
 		}
-	| SELECT select_attr FROM ID rel_list inner where SEMICOLON
+	| SELECT select_attr FROM ID rel_list inner where order_by SEMICOLON
 		{
 			selects_append_relation(&CONTEXT->ssql->sstr.selection, $4);
 			selects_append_conditions(&CONTEXT->ssql->sstr.selection, CONTEXT->conditions, CONTEXT->condition_length);
@@ -1084,6 +1087,48 @@ load_data:
 			load_data_init(&CONTEXT->ssql->sstr.load_data, $7, $4);
 		}
 		;
+
+order_by:
+	| ORDER BY order_attr order_attr_list
+	;
+
+order_attr:
+	ID {
+		OrderBy order;
+               	order_init(&order, NULL, $1, ORDER_ASC);
+               	selects_append_order(&CONTEXT->ssql->sstr.selection, &order);
+	}
+	| ID ASC {
+		OrderBy order;
+                order_init(&order, NULL, $1, ORDER_ASC);
+                selects_append_order(&CONTEXT->ssql->sstr.selection, &order);
+	}
+	| ID DESC {
+		OrderBy order;
+                order_init(&order, NULL, $1, ORDER_DESC);
+                selects_append_order(&CONTEXT->ssql->sstr.selection, &order);
+	}
+	| ID DOT ID {
+		OrderBy order;
+                order_init(&order, $1, $3, ORDER_ASC);
+                selects_append_order(&CONTEXT->ssql->sstr.selection, &order);
+	}
+	| ID DOT ID ASC {
+		OrderBy order;
+                order_init(&order, $1, $3, ORDER_ASC);
+                selects_append_order(&CONTEXT->ssql->sstr.selection, &order);
+	}
+	| ID DOT ID DESC {
+		OrderBy order;
+                order_init(&order, $1, $3, ORDER_DESC);
+                selects_append_order(&CONTEXT->ssql->sstr.selection, &order);
+	}
+	;
+
+order_attr_list:
+	| COMMA order_attr order_attr_list
+	;
+
 %%
 //_____________________________________________________________________
 extern void scan_string(const char *str, yyscan_t scanner);

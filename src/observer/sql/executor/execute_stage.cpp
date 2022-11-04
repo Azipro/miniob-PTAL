@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 
 #include <string>
 #include <sstream>
+#include <algorithm>
 
 #include "execute_stage.h"
 
@@ -567,12 +568,23 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
     rc = do_select_tables(select_stmt, magic_table, true);
   } else {
     LOG_WARN("select less than 1 tables is not supported");
-    return RC::UNIMPLENMENT;;
+    return RC::UNIMPLENMENT;
   }
   
   if (rc != RC::SUCCESS || magic_table == nullptr) {
     LOG_ERROR("select result to a tuple set failed.");
     return rc;
+  }
+
+  if (select_stmt->order_fields().size() > 0) {
+    rc = magic_table->set_order_index(select_stmt->order_fields());
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("set order index failed.");
+      return rc;
+    }
+    std::vector<MagicTuple> tuples = magic_table->tuples();
+    sort(tuples.begin(), tuples.end(), magic_table->compare_tuple);
+    magic_table->set_tuples(tuples);
   }
 
   std::stringstream ss;
