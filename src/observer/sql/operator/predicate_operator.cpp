@@ -132,7 +132,7 @@ bool PredicateOperator::do_predicate(RowTuple &tuple)
       filter_result = (compare == 0);
     } break;
     case OP_NOT_IN:{
-      filter_result = (compare != 0);
+      filter_result = (compare != 0 && !right_cell.has_null());
     } break;
     case OP_EXISTS:{
       filter_result = (left_cell.attr_type() != UNDEFINED);

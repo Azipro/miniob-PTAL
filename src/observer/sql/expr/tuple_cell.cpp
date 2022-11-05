@@ -124,3 +124,30 @@ int TupleCell::compare(const TupleCell &other) const
   LOG_WARN("not supported");
   return -1; // TODO return rc?
 }
+
+bool TupleCell::has_null() const{
+  switch (this->attr_type_)
+  {
+  case VALUELIST:{
+    ValueList* list = (ValueList*)this->data_;
+    if(list != nullptr){
+      for(int i = 0; i < list->length; i++){
+        if(list->values[i].type == NULL_){
+          return true;
+        }
+      }
+    }else{
+      return false;
+    }
+  }
+  case NULL_:{
+    return true;
+  }
+    break;
+  default:{
+    return false;
+  }
+    break;
+  }
+  return false;
+}
