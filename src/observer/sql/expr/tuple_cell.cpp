@@ -136,10 +136,12 @@ bool TupleCell::has_null() const{
           return true;
         }
       }
+      return false;
     }else{
       return false;
     }
   }
+  break;
   case NULL_:{
     return true;
   }

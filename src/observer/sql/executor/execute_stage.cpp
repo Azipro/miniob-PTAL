@@ -591,6 +591,7 @@ select * from t where exists (select * from ssq1 where col1 is null);
 select * from t where exists (select * from ssq1 where col1 is not null);
 
 select * from t where id in (1,3,4,5);
+select * from t where id not in (1,3,4,5);
 select * from t where id in (1,3,4,null);
 select * from t where exists (1,3,4,5);
 select * from t where exists ();
