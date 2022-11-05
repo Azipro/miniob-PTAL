@@ -48,6 +48,16 @@ static void agg_wildcard_fields(Table *table, std::vector<Field> &field_metas, A
   }
 }
 
+static void agg_wildcard_having_fields(Table *table, std::vector<HavingField> &field_metas, AggType agg_type, char * agg_str, CompOp comp, Value value)
+{
+  const TableMeta &table_meta = table->table_meta();
+  const int field_num = table_meta.field_num();
+  int i = table_meta.sys_field_num();
+  if (field_num > 0) {
+    field_metas.push_back(HavingField(table, table_meta.field(i), agg_type, agg_str, comp, value));
+  }
+}
+
 RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
 {
   if (nullptr == db) {
@@ -56,7 +66,7 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
   }
 
 
-  if (select_sql.agg_num > 0 && select_sql.attr_num != select_sql.agg_num) {
+  if (select_sql.agg_num > 0 && select_sql.attr_num != select_sql.agg_num && select_sql.group_num == 0) {
     LOG_WARN("invalid argument. cannot mix aggregation functions and attributes");
     return RC::INVALID_ARGUMENT;
   }
@@ -96,7 +106,7 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
           wildcard_fields(table, query_fields);
         }
       }
-    } else if (!common::is_blank(relation_attr.relation_name)) { // TODO
+    } else if (!common::is_blank(relation_attr.relation_name)) {
       const char *table_name = relation_attr.relation_name;
       const char *field_name = relation_attr.attribute_name;
 
@@ -153,9 +163,9 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
     }
   }
 
-  if (select_sql.agg_num > 0) {
-    std::reverse(query_fields.begin(), query_fields.end());
-  }
+//  if (select_sql.agg_num > 0) {
+//    std::reverse(query_fields.begin(), query_fields.end());
+//  }
 
   LOG_INFO("got %d tables in from stmt and %d fields in query stmt", tables.size(), query_fields.size());
 
@@ -178,7 +188,7 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
   for (int i = 0; i < select_sql.order_num; i++) {
     const OrderBy &order_by = select_sql.order_by[i];
 
-    if (!common::is_blank(order_by.relation_attr.relation_name)) { // TODO
+    if (!common::is_blank(order_by.relation_attr.relation_name)) {
       const char *table_name = order_by.relation_attr.relation_name;
       const char *field_name = order_by.relation_attr.attribute_name;
 
@@ -220,6 +230,110 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
     }
   }
 
+  // collect group fields in `group by` statement
+  std::vector<GroupField> group_fields;
+  for (int i = 0; i < select_sql.group_num; i++) {
+    const GroupBy &group_by = select_sql.group_by[i];
+
+    if (!common::is_blank(group_by.relation_attr.relation_name)) {
+      const char *table_name = group_by.relation_attr.relation_name;
+      const char *field_name = group_by.relation_attr.attribute_name;
+
+      if (0 == strcmp(table_name, "*")) {
+        if (0 != strcmp(field_name, "*")) {
+          LOG_WARN("invalid field name while table is *. attr=%s", field_name);
+          return RC::SCHEMA_FIELD_MISSING;
+        }
+      } else {
+        auto iter = table_map.find(table_name);
+        if (iter == table_map.end()) {
+          LOG_WARN("no such table in from list: %s", table_name);
+          return RC::SCHEMA_FIELD_MISSING;
+        }
+
+        Table *table = iter->second;
+        const FieldMeta *field_meta = table->table_meta().field(field_name);
+        if (nullptr == field_meta) {
+          LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
+          return RC::SCHEMA_FIELD_MISSING;
+        }
+
+        group_fields.push_back(GroupField(table, field_meta));
+      }
+    } else {
+      if (tables.size() != 1) {
+        LOG_WARN("invalid. I do not know the attr's table. attr=%s", group_by.relation_attr.attribute_name);
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+
+      Table *table = tables[0];
+      const FieldMeta *field_meta = table->table_meta().field(group_by.relation_attr.attribute_name);
+      if (nullptr == field_meta) {
+        LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), group_by.relation_attr.attribute_name);
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+
+      group_fields.push_back(GroupField(table, field_meta));
+    }
+  }
+
+  // collect group fields in `having` statement
+  std::vector<HavingField> having_fields;
+  for (int i = 0; i < select_sql.having_num; i++) {
+    const Having &having = select_sql.having[i];
+
+    if (common::is_blank(having.left_attr.relation_name) && (0 == strcmp(having.left_attr.attribute_name, "*") || is_number(having.left_attr.attribute_name))) {
+      const CompOp comp = having.comp;
+      const Value value = having.right_value;
+      for (Table *table : tables) {
+          agg_wildcard_having_fields(table, having_fields, having.left_attr.aggregation_type, having.left_attr.attribute_name, comp, value);
+      }
+    } else if (!common::is_blank(having.left_attr.relation_name)) {
+      const char *table_name = having.left_attr.relation_name;
+      const char *field_name = having.left_attr.attribute_name;
+      const CompOp comp = having.comp;
+      const Value value = having.right_value;
+
+      if (0 == strcmp(table_name, "*")) {
+        if (0 != strcmp(field_name, "*")) {
+          LOG_WARN("invalid field name while table is *. attr=%s", field_name);
+          return RC::SCHEMA_FIELD_MISSING;
+        }
+      } else {
+        auto iter = table_map.find(table_name);
+        if (iter == table_map.end()) {
+          LOG_WARN("no such table in from list: %s", table_name);
+          return RC::SCHEMA_FIELD_MISSING;
+        }
+
+        Table *table = iter->second;
+        const FieldMeta *field_meta = table->table_meta().field(field_name);
+        if (nullptr == field_meta) {
+          LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
+          return RC::SCHEMA_FIELD_MISSING;
+        }
+
+        having_fields.push_back(HavingField(table, field_meta, having.left_attr.aggregation_type, having.left_attr.attribute_name, comp, value));
+      }
+    } else {
+      if (tables.size() != 1) {
+        LOG_WARN("invalid. I do not know the attr's table. attr=%s", having.left_attr.attribute_name);
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+
+      Table *table = tables[0];
+      const FieldMeta *field_meta = table->table_meta().field(having.left_attr.attribute_name);
+      const CompOp comp = having.comp;
+      const Value value = having.right_value;
+      if (nullptr == field_meta) {
+        LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), having.left_attr.attribute_name);
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+
+      having_fields.push_back(HavingField(table, field_meta, having.left_attr.aggregation_type, having.left_attr.attribute_name, comp, value));
+    }
+  }
+
   // everything alright
   SelectStmt *select_stmt = new SelectStmt();
   select_stmt->tables_.swap(tables);
@@ -227,6 +341,8 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
   select_stmt->filter_stmt_ = filter_stmt;
   select_stmt->agg_num_ = select_sql.agg_num;
   select_stmt->order_fields_.swap(order_fields);
+  select_stmt->group_fields_.swap(group_fields);
+  select_stmt->having_fields_.swap(having_fields);
   stmt = select_stmt;
   return RC::SUCCESS;
 }
