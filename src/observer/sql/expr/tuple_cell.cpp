@@ -109,6 +109,9 @@ int TupleCell::compare(const TupleCell &other) const
     ValueList* list = (ValueList*)other.data_;
     if(list != nullptr){
       for(int i = 0; i < list->length; i++){
+        if(list->values[i].type == NULL_){
+          continue;
+        }
         const TupleCell tmp(list->values[i].type, (char *)list->values[i].data);
         if(this->compare(tmp) == 0){
           return 0;

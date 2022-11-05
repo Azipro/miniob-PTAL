@@ -589,6 +589,12 @@ insert into ssq1 values(1, null, 0.1);
 select * from ssq1 where col1 is null;
 select * from t where exists (select * from ssq1 where col1 is null);
 select * from t where exists (select * from ssq1 where col1 is not null);
+
+select * from t where id in (1,3,4,5);
+select * from t where id in (1,3,4,null);
+select * from t where exists (1,3,4,5);
+select * from t where exists ();
+select * from t where not exists ();
 */
 RC ExecuteStage::do_select(SQLStageEvent *sql_event)
 {
@@ -745,7 +751,6 @@ RC ExecuteStage::do_sub_query(Db *db, Query* query, std::vector<Value> &value_li
       } else if (select_stmt->tables().size() > 1) {
         rc = do_select_tables(select_stmt, magic_table, true);
       } else {
-        LOG_WARN("select less than 1 tables is not supported");
         return RC::UNIMPLENMENT;
         ;
       }

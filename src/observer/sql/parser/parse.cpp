@@ -126,6 +126,15 @@ void value_init_undefined(Value *value)
   value->data = malloc(sizeof(v));
   memcpy(value->data, &v, sizeof(v));
 }
+void value_init_list(Value *set_value, int value_list_length, Value* value){
+  set_value->type = VALUELIST;
+  ValueList* value_list = (ValueList*)malloc(sizeof(ValueList));
+  value_list->length = value_list_length;
+  for(int i = 0; i < value_list_length; i++){
+    value_list->values[i] = value[i];
+  }
+  set_value->data = value_list;
+}
 void value_destroy(Value *value)
 {
   value->type = UNDEFINED;

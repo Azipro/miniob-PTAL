@@ -484,11 +484,13 @@ public:
           LOG_WARN("unknown aggregation function");
           return RC::INVALID_ARGUMENT;
       }
-      Value value;
-      value.type = cell.attr_type();
-      value.data = malloc(cell.length());
-      memcpy(value.data, cell.data(), cell.length());
-      value_list.push_back(value);
+      if(cell.attr_type() != UNDEFINED){
+        Value value;
+        value.type = cell.attr_type();
+        value.data = malloc(cell.length());
+        memcpy(value.data, cell.data(), cell.length());
+        value_list.push_back(value);
+      }
     }
     return RC::SUCCESS;
   }

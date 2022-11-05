@@ -292,6 +292,7 @@ void value_init_query(Value *value, Query *query);
 void value_init_date(Value *value, int32_t date);
 void value_init_null(Value *value);
 void value_init_undefined(Value *value);
+void value_init_list(Value *set_value, int value_list_length, Value* value);
 void value_destroy(Value *value);
 
 void condition_init(Condition *condition, CompOp comp, int left_is_attr, RelAttr *left_attr, Value *left_value,

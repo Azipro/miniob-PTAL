@@ -16,6 +16,7 @@ typedef struct ParserContext {
   size_t condition_length;
   size_t from_length;
   size_t value_length;
+  size_t value_list_length;
   size_t insert_length;
   int nullable;
   Value values[MAX_NUM];
@@ -412,9 +413,30 @@ value:
 		// 赋值后将子句清空
 		memset(GET_SUB_CONTEXT->ssql, 0, sizeof(*GET_SUB_CONTEXT->ssql));
 	}
-    ;
 	|NULL__ {
 		value_init_null(&CONTEXT->values[CONTEXT->value_length++]);
+	}
+	| LBRACE list_value RBRACE{
+		if(CONTEXT->value_list_length == 0){
+			value_init_undefined(&CONTEXT->values[CONTEXT->value_length++]);
+		}else{
+			value_init_list(&CONTEXT->values[CONTEXT->value_length++], CONTEXT->value_list_length, CONTEXT->values);
+		}
+		CONTEXT->value_list_length = 0;
+	}
+	;
+
+list_value:
+	/* empty */
+	| value multi_value{
+		CONTEXT->value_list_length++;
+	}
+	;
+
+multi_value:
+	/* empty */
+	| COMMA value multi_value{
+		CONTEXT->value_list_length++;
 	}
 	;
 
