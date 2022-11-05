@@ -47,7 +47,7 @@ public:
   int attr_length() const {
     return attr_length_;
   }
-
+  // TODO: 支持TEXT
   int operator()(const char *v1, const char *v2) const {
     int result = 0;
     int offset = 0;

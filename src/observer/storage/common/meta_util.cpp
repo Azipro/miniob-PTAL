@@ -27,3 +27,12 @@ std::string table_index_file(const char *base_dir, const char *table_name, const
 {
   return std::string(base_dir) + common::FILE_PATH_SPLIT_STR + table_name + "-" + index_name + TABLE_INDEX_SUFFIX;
 }
+
+std::string text_data_file(const char *base_dir, const char *table_name, int text_id) {
+  std::string text_name = std::string(base_dir) + common::FILE_PATH_SPLIT_STR;
+  while (text_id != 0) {
+    text_name += char((text_id % 10) + '0');
+    text_id /= 10;
+  }
+  return std::string(text_name) + table_name +  "-text" +  + TABLE_DATA_SUFFIX;
+}

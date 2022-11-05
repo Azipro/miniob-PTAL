@@ -103,12 +103,24 @@ bool PredicateOperator::do_predicate(RowTuple &tuple)
       filter_result = (compare > 0);
     } break;
     case OP_LIKE: {
-      filter_result = like(left_cell.data(), right_cell.data(), left_cell.length());
-      LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left_cell.data(), right_cell.data(), filter_result);
+      if (left_cell.attr_type() == TEXTS) { // 前面过滤了右边不为CHARS的情况
+        Text *t = (Text*)left_cell.data();
+        std::string text = text_to_string(t);
+        filter_result = like(text.c_str(), right_cell.data(), t->text_len);
+      } else {
+        filter_result = like(left_cell.data(), right_cell.data(), left_cell.length());
+        LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left_cell.data(), right_cell.data(), filter_result);
+      }
     } break;
     case OP_NOT_LIKE: {
-      filter_result = !like(left_cell.data(), right_cell.data(), left_cell.length());
-      LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left_cell.data(), right_cell.data(), filter_result);
+      if (left_cell.attr_type() == TEXTS) {
+        Text *t = (Text*)left_cell.data();
+        std::string text = text_to_string(t);
+        filter_result = !like(text.c_str(), right_cell.data(), t->text_len);
+      } else {
+        filter_result = !like(left_cell.data(), right_cell.data(), left_cell.length());
+        LOG_INFO("left_value=%s, right_value=%s, filter_result=%d", left_cell.data(), right_cell.data(), filter_result);
+      }
     } break;
     case EQUAL_IS: {
       filter_result = (left_cell.attr_type() == NULL_);

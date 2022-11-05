@@ -60,5 +60,6 @@ RC DeleteOperator::next()
 RC DeleteOperator::close()
 {
   children_[0]->close();
+  LOG_INFO("DeleteOperator close.");
   return RC::SUCCESS;
 }

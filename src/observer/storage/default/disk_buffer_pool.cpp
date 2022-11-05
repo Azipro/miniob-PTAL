@@ -564,6 +564,32 @@ RC DiskBufferPool::load_page(PageNum page_num, Frame *frame)
   return RC::SUCCESS;
 }
 
+RC DiskBufferPool::storage_text(int &file_desc, int &text_len, char* data, const char* file) { // 应该用bufferpool分配页来存的
+  int fd = open(file, O_RDWR | O_CREAT | O_EXCL, S_IREAD | S_IWRITE);
+  if (fd < 0) {
+    LOG_ERROR("Failed to create %s, due to %s.", file, strerror(errno));
+    return RC::SCHEMA_DB_EXIST;
+  }
+  close(fd);
+
+  fd = open(file, O_RDWR);
+  if (fd < 0) {
+    LOG_ERROR("Failed to open for readwrite %s, due to %s.", file, strerror(errno));
+    return RC::IOERR_ACCESS;
+  }
+  text_len = strlen(data);
+  if (text_len > 4096) {
+    text_len = 4096;
+  }
+  if (write(fd, data, text_len) != text_len) {
+    LOG_ERROR("Failed to write header to file %s, due to %s.", file, strerror(errno));
+    close(fd);
+    return RC::IOERR_WRITE;
+  }
+  file_desc = fd;
+  return RC::SUCCESS;
+}
+
 RC DiskBufferPool::get_page_count(int *page_count)
 {
   *page_count = file_header_->allocated_pages;

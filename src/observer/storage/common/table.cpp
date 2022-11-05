@@ -119,6 +119,7 @@ RC Table::create(
 
   base_dir_ = base_dir;
   clog_manager_ = clog_manager;
+  text_id_ = 1;
   LOG_INFO("Successfully create table %s:%s", base_dir, name);
   return rc;
 }
@@ -392,7 +393,7 @@ RC Table::make_record(int value_num, const Value *values, char *&record_out)
   for (int i = 0; i < value_num; i++) {
     const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
     const Value &value = values[i];
-    if (field->type() != value.type && value.type != AttrType::NULL_) {
+    if ((field->type() != value.type && value.type != AttrType::NULL_) && !(field->type() == TEXTS && value.type == AttrType::CHARS)) {
       LOG_ERROR("Invalid value type. table name =%s, field name=%s, type=%d, but given=%d",
           table_meta_.name(),
           field->name(),
@@ -423,6 +424,15 @@ RC Table::make_record(int value_num, const Value *values, char *&record_out)
         if (copy_len > data_len) {
           copy_len = data_len + 1;
         }
+      } else if (field->type() == TEXTS) {
+        RC rc = RC::SUCCESS;
+        Text text;
+        rc = storage_text(text.file_desc, text.text_len, (char*)value.data);
+        if (rc != RC::SUCCESS) {
+          return rc;
+        }
+        memcpy(record + field->offset(), (void*)&text, copy_len);
+        continue;
       }
       memcpy(record + field->offset(), value.data, copy_len);
     }
@@ -430,6 +440,11 @@ RC Table::make_record(int value_num, const Value *values, char *&record_out)
 
   record_out = record;
   return RC::SUCCESS;
+}
+
+RC Table::storage_text(int &file_desc, int &text_len, char* data){
+  std::string file = text_data_file(base_dir_.c_str(), table_meta_.name(), text_id_ ++);
+  return data_buffer_pool_->storage_text(file_desc, text_len, data, file.c_str());
 }
 
 RC Table::init_record_handler(const char *base_dir)
@@ -941,7 +956,7 @@ RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_
       return RC::INVALID_ARGUMENT;
     }
     // 类型不匹配
-    if (field->type() != value_list[i].value.type && value_list[i].value.type != NULL_) {
+    if ((field->type() != value_list[i].value.type && value_list[i].value.type != NULL_) && !(field->type() == TEXTS && value_list[i].value.type == CHARS)) {
       convert_value(&value_list[i].value, field->type());
       if (field->type() != value_list[i].value.type) {
         LOG_WARN("Failed to update record: type mismatch, field type: %d, value type: %d",
@@ -966,6 +981,17 @@ RC Table::update_records(Trx *trx, Record *record, std::vector<SetValue> &value_
         if (copy_len > data_len) {
           copy_len = data_len + 1;
         }
+      } else if (field->type() == TEXTS) {
+        RC rc = RC::SUCCESS;
+        Text text;
+        rc = storage_text(text.file_desc, text.text_len, (char*)value_list[i].value.data); // TODO: 删除旧文件
+        if (rc != RC::SUCCESS) {
+          return rc;
+        }
+        value_destroy(&value_list[i].value);
+        value_list[i].value.type = TEXTS;
+        value_list[i].value.data = malloc(copy_len);
+        memcpy(value_list[i].value.data, (void*)&text, copy_len);
       }
     }
     offset_list.push_back(field->offset());

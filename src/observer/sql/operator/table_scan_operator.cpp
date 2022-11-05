@@ -37,6 +37,7 @@ RC TableScanOperator::next()
 
 RC TableScanOperator::close()
 {
+  LOG_INFO("TableScanOperator closed.");
   return record_scanner_.close_scan();
 }
 

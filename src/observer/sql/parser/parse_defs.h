@@ -59,13 +59,14 @@ typedef enum {
 //属性值类型
 typedef enum
 {
-  QUERY,
   UNDEFINED,
   CHARS,
   INTS,
   FLOATS,
+  TEXTS,
   DATES,
   NULL_,
+  QUERY,
 } AttrType;
 
 // 索引类型
@@ -81,6 +82,11 @@ typedef struct _Value {
   AttrType type;  // type of value
   void *data;     // value
 } Value;
+
+typedef struct _Text{
+  int file_desc;
+  int text_len;
+} Text;
 
 typedef struct _Condition {
   int left_is_attr;    // TRUE if left-hand side is an attribute

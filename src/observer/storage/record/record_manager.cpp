@@ -246,12 +246,14 @@ RC RecordPageHandler::update_record(const Record *rec)
 }
 
 RC RecordPageHandler::delete_record(const RID *rid)
-{
+{ 
   if (rid->slot_num >= page_header_->record_capacity) {
     LOG_ERROR("Invalid slot_num %d, exceed page's record capacity, page_num %d.",
 	      rid->slot_num, frame_->page_num());
     return RC::INVALID_ARGUMENT;
   }
+
+  LOG_INFO("----------------Azi: begin to delete record in page. (has %d record, record_capacity = %d, each record size is %d)----------------", page_header_->record_num, page_header_->record_capacity, page_header_->record_real_size);
 
   Bitmap bitmap(bitmap_, page_header_->record_capacity);
   if (bitmap.get_bit(rid->slot_num)) {
@@ -259,11 +261,12 @@ RC RecordPageHandler::delete_record(const RID *rid)
     page_header_->record_num--;
     frame_->mark_dirty();
 
-    if (page_header_->record_num == 0) {
+    if (page_header_->record_num == 0) { 
       DiskBufferPool *disk_buffer_pool = disk_buffer_pool_;
       PageNum page_num = get_page_num();
       cleanup();
       disk_buffer_pool->dispose_page(page_num);
+      LOG_INFO("----------------Azi: current page: %d has 0 record. ----------------", page_num);
     }
     return RC::SUCCESS;
   } else {
