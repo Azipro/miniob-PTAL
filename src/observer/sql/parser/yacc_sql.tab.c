@@ -2876,13 +2876,13 @@ yyreduce:
 
   case 160: /* sub_comOp: IS  */
 #line 1089 "yacc_sql.y"
-                   { CONTEXT->comp = EQUAL_IS; }
+                   { GET_SUB_CONTEXT->comp = EQUAL_IS; }
 #line 2881 "yacc_sql.tab.c"
     break;
 
   case 161: /* sub_comOp: IS NOT  */
 #line 1090 "yacc_sql.y"
-                   { CONTEXT->comp = NOT_EQUAL_IS; }
+                   { GET_SUB_CONTEXT->comp = NOT_EQUAL_IS; }
 #line 2887 "yacc_sql.tab.c"
     break;
 

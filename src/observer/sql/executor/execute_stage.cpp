@@ -583,6 +583,12 @@ select * from t2;
 select * from t where t.col1 >(select avg(t2.col1) from t2); 
 select * from t where t.name >(select avg(t2.col1) from t2); 
 select * from t where t.col1 >(select avg(t2.col1) from t2) and t.col2 >= 2; 
+
+create table ssq1 (id int, col1 int nullable, feat1 float);
+insert into ssq1 values(1, null, 0.1);
+select * from ssq1 where col1 is null;
+select * from t where exists (select * from ssq1 where col1 is null);
+select * from t where exists (select * from ssq1 where col1 is not null);
 */
 RC ExecuteStage::do_select(SQLStageEvent *sql_event)
 {
@@ -1091,7 +1097,7 @@ RC ExecuteStage::convert_value(Db *db, Value & value){
     std::vector<Value> value_list;
     LOG_INFO("debug info, before do_sub_query");
     do_sub_query(db, (Query *)value.data, value_list);
-    LOG_INFO("debug info, after do_sub_query");
+    LOG_INFO("debug info, after do_sub_query, size=%d", value_list.size());
     if(value_list.size() == 0){
       value_init_undefined(&value);
       return RC::INVALID_ARGUMENT;

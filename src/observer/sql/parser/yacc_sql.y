@@ -1208,8 +1208,8 @@ sub_comOp:
     | NE { GET_SUB_CONTEXT->comp = NOT_EQUAL; }
     | LIKE { GET_SUB_CONTEXT->comp = OP_LIKE; }
     | NOT LIKE { GET_SUB_CONTEXT->comp = OP_NOT_LIKE; }
-	| IS       { CONTEXT->comp = EQUAL_IS; }
-	| IS NOT   { CONTEXT->comp = NOT_EQUAL_IS; }
+	| IS       { GET_SUB_CONTEXT->comp = EQUAL_IS; }
+	| IS NOT   { GET_SUB_CONTEXT->comp = NOT_EQUAL_IS; }
     ;
 
 comOp:
